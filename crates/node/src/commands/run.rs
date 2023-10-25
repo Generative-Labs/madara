@@ -52,6 +52,9 @@ pub struct ExtendedRunCmd {
     /// increases the memory footprint of the node.
     #[clap(long)]
     pub cache: bool,
+
+    // Choose hotstuff replace grandpa.
+    pub enable_hotstuff: bool,
 }
 
 impl ExtendedRunCmd {
@@ -86,10 +89,13 @@ pub fn run_node(mut cli: Cli) -> Result<()> {
             None
         }
     };
+
+    let enable_hotstuff = cli.run.enable_hotstuff;
+
     runner.run_node_until_exit(|config| async move {
         let sealing = cli.run.sealing.map(Into::into).unwrap_or_default();
         let cache = cli.run.cache;
-        service::new_full(config, sealing, da_config, cache).map_err(sc_cli::Error::Service)
+        service::new_full(config, sealing, da_config, cache, enable_hotstuff).map_err(sc_cli::Error::Service)
     })
 }
 

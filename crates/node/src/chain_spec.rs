@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use madara_runtime::{AuraConfig, GenesisConfig, GrandpaConfig, SealingMode, SystemConfig, WASM_BINARY};
+use hotstuff_primitives::AuthorityId as HotStuffId;
+use madara_runtime::{
+    AuraConfig, GenesisConfig, GrandpaConfig, HotstuffConfig, SealingMode, SystemConfig, WASM_BINARY,
+};
 use mp_felt::Felt252Wrapper;
 use pallet_starknet::genesis_loader::{GenesisData, GenesisLoader, HexFelt};
 use sc_service::{BasePath, ChainType};
@@ -51,8 +54,8 @@ pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Pu
 }
 
 /// Generate an Aura authority key.
-pub fn authority_keys_from_seed(s: &str) -> (AuraId, GrandpaId) {
-    (get_from_seed::<AuraId>(s), get_from_seed::<GrandpaId>(s))
+pub fn authority_keys_from_seed(s: &str) -> (AuraId, GrandpaId, HotStuffId) {
+    (get_from_seed::<AuraId>(s), get_from_seed::<GrandpaId>(s), get_from_seed::<HotStuffId>(s))
 }
 
 pub fn development_config(sealing: SealingMode, base_path: BasePath) -> Result<DevChainSpec, String> {
@@ -165,7 +168,7 @@ fn load_genesis(data_path: PathBuf) -> GenesisLoader {
 fn testnet_genesis(
     genesis_loader: GenesisLoader,
     wasm_binary: &[u8],
-    initial_authorities: Vec<(AuraId, GrandpaId)>,
+    initial_authorities: Vec<(AuraId, GrandpaId, HotStuffId)>,
     _enable_println: bool,
 ) -> GenesisConfig {
     let starknet_genesis_config: madara_runtime::pallet_starknet::GenesisConfig<_> = genesis_loader.into();
@@ -181,5 +184,6 @@ fn testnet_genesis(
         grandpa: GrandpaConfig { authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect() },
         /// Starknet Genesis configuration.
         starknet: starknet_genesis_config,
+        hotstuff: HotstuffConfig { authorities: initial_authorities.iter().map(|x| (x.2.clone())).collect() },
     }
 }

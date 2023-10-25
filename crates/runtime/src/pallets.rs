@@ -10,7 +10,9 @@ pub use frame_support::weights::constants::{
 pub use frame_support::weights::{IdentityFee, Weight};
 pub use frame_support::{construct_runtime, parameter_types, StorageValue};
 pub use frame_system::Call as SystemCall;
+use hotstuff_primitives::AuthorityId as HotstuffId;
 pub use mp_chain_id::SN_GOERLI_CHAIN_ID;
+pub use pallet_hotstuff;
 /// Import the StarkNet pallet.
 pub use pallet_starknet;
 pub use pallet_timestamp::Call as TimestampCall;
@@ -149,6 +151,17 @@ impl pallet_timestamp::Config for Runtime {
     type Moment = u64;
     type OnTimestampSet = ConsensusOnTimestampSet<Self>;
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
+    type WeightInfo = ();
+}
+
+/// Hotstuff consensus pallet
+impl pallet_hotstuff::Config for Runtime {
+    type AuthorityId = HotstuffId;
+
+    type DisabledValidators = ();
+    type MaxAuthorities = ConstU32<32>;
+    type AllowMultipleBlocksPerSlot = ConstBool<false>;
+
     type WeightInfo = ();
 }
 

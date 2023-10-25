@@ -27,10 +27,13 @@ pub use frame_support::weights::{IdentityFee, Weight};
 pub use frame_support::{construct_runtime, parameter_types, StorageValue};
 pub use frame_system::Call as SystemCall;
 use frame_system::{EventRecord, Phase};
+use hotstuff_primitives::AuthorityId as HotstuffId;
 use mp_felt::Felt252Wrapper;
 use mp_transactions::compute_hash::ComputeTransactionHash;
 use mp_transactions::{Transaction, TxType, UserTransaction};
 use pallet_grandpa::{fg_primitives, AuthorityId as GrandpaId, AuthorityList as GrandpaAuthorityList};
+// Hotstuff consensus authority id.
+pub use pallet_hotstuff;
 /// Import the StarkNet pallet.
 pub use pallet_starknet;
 use pallet_starknet::pallet::Error as PalletError;
@@ -71,6 +74,8 @@ construct_runtime!(
         Grandpa: pallet_grandpa,
         // Include Starknet pallet.
         Starknet: pallet_starknet,
+        // Include hotstuff consensus pallet
+        Hotstuff: pallet_hotstuff,
     }
 );
 
@@ -228,6 +233,17 @@ impl_runtime_apis! {
             // defined our key owner proof type as a bottom type (i.e. a type
             // with no values).
             None
+        }
+    }
+
+    // hotstuff runtime api
+    impl hotstuff_primitives::HotstuffApi<Block, HotstuffId> for Runtime {
+        fn slot_duration() -> hotstuff_primitives::SlotDuration {
+            hotstuff_primitives::SlotDuration::from_millis(Hotstuff::slot_duration())
+        }
+
+        fn authorities() -> Vec<HotstuffId> {
+            Hotstuff::authorities().into_inner()
         }
     }
 

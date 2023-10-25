@@ -4560,6 +4560,61 @@ dependencies = [
 ]
 
 [[package]]
+name = "hotstuff-consensus"
+version = "0.1.0"
+source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#ec7b9bbc6430ba53ea755359f5089d2a455bf1c8"
+dependencies = [
+ "array-bytes 6.1.0",
+ "async-recursion",
+ "async-trait",
+ "futures",
+ "hotstuff-primitives",
+ "log",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-basic-authorship",
+ "sc-chain-spec",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-consensus-slots",
+ "sc-network",
+ "sc-network-gossip",
+ "sc-service",
+ "sc-telemetry",
+ "sc-utils",
+ "scale-info",
+ "serde",
+ "sp-api",
+ "sp-application-crypto 7.0.0",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-core 7.0.0",
+ "sp-inherents",
+ "sp-keyring",
+ "sp-keystore 0.13.0",
+ "sp-runtime 7.0.0",
+ "tokio",
+]
+
+[[package]]
+name = "hotstuff-primitives"
+version = "0.1.0"
+source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#ec7b9bbc6430ba53ea755359f5089d2a455bf1c8"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-application-crypto 7.0.0",
+ "sp-consensus-slots",
+ "sp-core 7.0.0",
+ "sp-inherents",
+ "sp-runtime 7.0.0",
+ "sp-std 5.0.0",
+ "sp-timestamp",
+]
+
+[[package]]
 name = "http"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6067,6 +6122,8 @@ dependencies = [
  "frame-system",
  "futures",
  "hex",
+ "hotstuff-consensus",
+ "hotstuff-primitives",
  "jsonrpsee 0.16.3",
  "log",
  "madara-runtime",
@@ -6133,12 +6190,14 @@ dependencies = [
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
  "frame-try-runtime",
+ "hotstuff-primitives",
  "mp-chain-id",
  "mp-felt",
  "mp-hashers",
  "mp-transactions",
  "pallet-aura",
  "pallet-grandpa",
+ "pallet-hotstuff",
  "pallet-starknet",
  "pallet-timestamp",
  "parity-scale-codec",
@@ -7525,6 +7584,22 @@ dependencies = [
  "sp-runtime 7.0.0",
  "sp-session",
  "sp-staking",
+ "sp-std 5.0.0",
+]
+
+[[package]]
+name = "pallet-hotstuff"
+version = "4.0.0-dev"
+source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#ec7b9bbc6430ba53ea755359f5089d2a455bf1c8"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "hotstuff-primitives",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime 7.0.0",
  "sp-std 5.0.0",
 ]
 
@@ -9303,6 +9378,29 @@ dependencies = [
  "sp-core 7.0.0",
  "sp-wasm-interface 7.0.0",
  "thiserror",
+]
+
+[[package]]
+name = "sc-basic-authorship"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?branch=polkadot-v0.9.43#5e49f6e44820affccaf517fd22af564f4b495d40"
+dependencies = [
+ "futures",
+ "futures-timer",
+ "log",
+ "parity-scale-codec",
+ "sc-block-builder",
+ "sc-client-api",
+ "sc-proposer-metrics",
+ "sc-telemetry",
+ "sc-transaction-pool-api",
+ "sp-api",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-core 7.0.0",
+ "sp-inherents",
+ "sp-runtime 7.0.0",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]

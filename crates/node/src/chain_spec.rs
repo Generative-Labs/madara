@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use madara_runtime::{AuraConfig, EnableManualSeal, GenesisConfig, GrandpaConfig, SystemConfig, WASM_BINARY};
+use madara_runtime::{AuraConfig, EnableManualSeal, GenesisConfig, GrandpaConfig, SystemConfig, WASM_BINARY, HotstuffConfig};
 use mp_felt::Felt252Wrapper;
 use pallet_starknet::genesis_loader::{GenesisData, GenesisLoader, HexFelt};
 use sc_service::{BasePath, ChainType};
@@ -180,5 +180,8 @@ fn testnet_genesis(
         grandpa: GrandpaConfig { authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect() },
         /// Starknet Genesis configuration.
         starknet: starknet_genesis_config,
+        hotstuff: HotstuffConfig{
+            authorities: Vec::new(),
+        },
     }
 }

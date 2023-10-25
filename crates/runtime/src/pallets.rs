@@ -22,6 +22,9 @@ pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 use sp_std::marker::PhantomData;
 
+pub use pallet_hotstuff;
+use hotstuff_primitives::AuthorityId as HotstuffId;
+
 use crate::*;
 
 // Configure FRAME pallets to include in runtime.
@@ -150,6 +153,17 @@ impl pallet_timestamp::Config for Runtime {
     type OnTimestampSet = ConsensusOnTimestampSet<Self>;
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
     type WeightInfo = ();
+}
+
+/// Hotstuff consensus pallet
+impl pallet_hotstuff::Config for Runtime {
+    type AuthorityId = HotstuffId;
+
+	type DisabledValidators = ();
+	type MaxAuthorities = ConstU32<32>;
+	type AllowMultipleBlocksPerSlot = ConstBool<false>;
+
+	type WeightInfo = ();
 }
 
 parameter_types! {

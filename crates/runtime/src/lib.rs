@@ -54,6 +54,11 @@ use starknet_api::api_core::{ClassHash, ContractAddress, EntryPointSelector, Non
 use starknet_api::hash::StarkFelt;
 use starknet_api::state::StorageKey;
 use starknet_api::transaction::{Calldata, Event as StarknetEvent, TransactionHash};
+
+// Hotstuff consensus authority id.
+pub use pallet_hotstuff;
+use hotstuff_primitives::AuthorityId as HotstuffId;
+
 /// Import the types.
 pub use types::*;
 
@@ -71,6 +76,8 @@ construct_runtime!(
         Grandpa: pallet_grandpa,
         // Include Starknet pallet.
         Starknet: pallet_starknet,
+        // Include hotstuff consensus pallet
+        Hotstuff: pallet_hotstuff,
     }
 );
 
@@ -228,6 +235,16 @@ impl_runtime_apis! {
             // defined our key owner proof type as a bottom type (i.e. a type
             // with no values).
             None
+        }
+    }
+
+    impl hotstuff_primitives::HotstuffApi<Block, HotstuffId> for Runtime {
+        fn slot_duration() -> hotstuff_primitives::SlotDuration {
+            hotstuff_primitives::SlotDuration::from_millis(Hotstuff::slot_duration())
+        }
+
+        fn authorities() -> Vec<HotstuffId> {
+            Hotstuff::authorities().into_inner()
         }
     }
 

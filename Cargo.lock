@@ -4570,6 +4570,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "hotstuff-primitives"
+version = "0.1.0"
+source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#ec7b9bbc6430ba53ea755359f5089d2a455bf1c8"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-application-crypto 7.0.0",
+ "sp-consensus-slots",
+ "sp-core 7.0.0",
+ "sp-inherents",
+ "sp-runtime 7.0.0",
+ "sp-std 5.0.0",
+ "sp-timestamp",
+]
+
+[[package]]
 name = "http"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6143,12 +6161,14 @@ dependencies = [
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
  "frame-try-runtime",
+ "hotstuff-primitives",
  "mp-chain-id",
  "mp-felt",
  "mp-hashers",
  "mp-transactions",
  "pallet-aura",
  "pallet-grandpa",
+ "pallet-hotstuff",
  "pallet-starknet",
  "pallet-timestamp",
  "parity-scale-codec",
@@ -7532,6 +7552,22 @@ dependencies = [
  "sp-runtime 7.0.0",
  "sp-session",
  "sp-staking",
+ "sp-std 5.0.0",
+]
+
+[[package]]
+name = "pallet-hotstuff"
+version = "4.0.0-dev"
+source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#ec7b9bbc6430ba53ea755359f5089d2a455bf1c8"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "hotstuff-primitives",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime 7.0.0",
  "sp-std 5.0.0",
 ]
 

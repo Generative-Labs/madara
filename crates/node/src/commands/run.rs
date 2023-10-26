@@ -53,7 +53,8 @@ pub struct ExtendedRunCmd {
     #[clap(long)]
     pub cache: bool,
 
-    // Choose hotstuff replace grandpa.
+    /// Choose hotstuff replace grandpa.
+    #[clap(long)]
     pub enable_hotstuff: bool,
 }
 

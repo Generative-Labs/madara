@@ -62,7 +62,7 @@ starknet-ff = { workspace = true }
 starknet_api = { workspace = true }
 
 # Hotstuff dependencies
-hotstuff-primitives = { workspace = true  }
+hotstuff-primitives = { workspace = true }
 pallet-hotstuff = { workspace = true }
 
 [build-dependencies]

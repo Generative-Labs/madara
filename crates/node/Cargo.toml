@@ -74,8 +74,8 @@ frame-benchmarking-cli = { workspace = true }
 # Starknet
 blockifier = { workspace = true }
 hex = { workspace = true }
-madara-runtime = { workspace = true }
 madara-hotstuff-runtime = { workspace = true }
+madara-runtime = { workspace = true }
 mc-block-proposer = { workspace = true }
 mc-data-availability = { workspace = true }
 mc-db = { workspace = true }
@@ -100,8 +100,8 @@ serde_json = { workspace = true }
 url = { workspace = true }
 
 # Hotstuff dependencies
-hotstuff-primitives = { workspace = true  }
 hotstuff-consensus = { workspace = true }
+hotstuff-primitives = { workspace = true }
 
 [build-dependencies]
 substrate-build-script-utils = { workspace = true }

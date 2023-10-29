@@ -203,8 +203,8 @@ cairo-lang-casm = { git = "https://github.com/keep-starknet-strange/cairo.git", 
 cairo-lang-utils = { git = "https://github.com/keep-starknet-strange/cairo.git", branch = "no_std-support-8bbf530", default-features = false }
 
 # Hotstuff consensus
-hotstuff-consensus = { git = "https://github.com/Generative-Labs/hotstuff.git", branch = "polkadot-v0.9.43"}
-hotstuff-primitives = { git = "https://github.com/Generative-Labs/hotstuff.git",branch = "polkadot-v0.9.43", default-features = false }
+hotstuff-consensus = { git = "https://github.com/Generative-Labs/hotstuff.git", branch = "polkadot-v0.9.43" }
+hotstuff-primitives = { git = "https://github.com/Generative-Labs/hotstuff.git", branch = "polkadot-v0.9.43", default-features = false }
 pallet-hotstuff = { git = "https://github.com/Generative-Labs/hotstuff.git", branch = "polkadot-v0.9.43", default-features = false }
 
 # Other third party dependencies

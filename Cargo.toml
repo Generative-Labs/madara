@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
   "crates/node",
-  "crates/runtime",
+  "crates/runtime/madara",
+  "crates/runtime/madara-hotstuff",
   "crates/pallets/starknet",
   "crates/primitives/digest-log",
   "crates/primitives/transactions",
@@ -28,7 +29,8 @@ members = [
 # We don't want `cargo test` to trigger its tests
 default-members = [
   "crates/node",
-  "crates/runtime",
+  "crates/runtime/madara",
+  "crates/runtime/madara-hotstuff",
   "crates/pallets/starknet",
   "crates/primitives/digest-log",
   "crates/primitives/transactions",
@@ -169,7 +171,8 @@ mc-transaction-pool = { path = "crates/client/transaction-pool" }
 mc-data-availability = { path = "crates/client/data-availability" }
 
 # Madara runtime
-madara-runtime = { path = "crates/runtime" }
+madara-runtime = { path = "crates/runtime/madara" }
+madara-hotstuff-runtime = { path = "crates/runtime/madara-hotstuff" }
 
 # Starknet dependencies
 # Cairo Virtual Machine

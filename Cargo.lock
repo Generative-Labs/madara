@@ -6126,6 +6126,7 @@ dependencies = [
  "hotstuff-primitives",
  "jsonrpsee 0.16.3",
  "log",
+ "madara-hotstuff-runtime",
  "madara-runtime",
  "mc-block-proposer",
  "mc-data-availability",
@@ -6176,6 +6177,46 @@ dependencies = [
  "substrate-prometheus-endpoint",
  "try-runtime-cli",
  "url",
+]
+
+[[package]]
+name = "madara-hotstuff-runtime"
+version = "0.4.0"
+dependencies = [
+ "blockifier",
+ "frame-benchmarking",
+ "frame-executive",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "frame-try-runtime",
+ "hotstuff-primitives",
+ "mp-chain-id",
+ "mp-felt",
+ "mp-hashers",
+ "mp-transactions",
+ "pallet-aura",
+ "pallet-hotstuff",
+ "pallet-starknet",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-api",
+ "sp-block-builder",
+ "sp-consensus-aura",
+ "sp-core 7.0.0",
+ "sp-inherents",
+ "sp-offchain",
+ "sp-runtime 7.0.0",
+ "sp-session",
+ "sp-std 5.0.0",
+ "sp-transaction-pool",
+ "sp-version",
+ "starknet-ff",
+ "starknet_api",
+ "substrate-wasm-builder",
 ]
 
 [[package]]

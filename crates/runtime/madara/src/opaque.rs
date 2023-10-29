@@ -22,7 +22,7 @@ pub use sp_runtime::{Perbill, Permill};
 use sp_std::prelude::*;
 
 use super::*;
-use crate::{Aura, BlockNumber, Grandpa, Hotstuff};
+use crate::{Aura, BlockNumber, Grandpa};
 /// Opaque block header type.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 /// Opaque block type.
@@ -34,6 +34,5 @@ impl_opaque_keys! {
     pub struct SessionKeys {
         pub aura: Aura,
         pub grandpa: Grandpa,
-        pub hotstuff: Hotstuff,
     }
 }

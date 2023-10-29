@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+#[cfg(feature = "madara-hotstuff-runtime")]
+use madara_hotstuff_runtime::opaque::Block;
+#[cfg(feature = "madara-runtime")]
 use madara_runtime::opaque::Block;
 use sc_service::Configuration;
 

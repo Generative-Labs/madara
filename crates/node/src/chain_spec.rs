@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
 use hotstuff_primitives::AuthorityId as HotStuffId;
-use madara_runtime::{
-    AuraConfig, GenesisConfig, GrandpaConfig, HotstuffConfig, SealingMode, SystemConfig, WASM_BINARY,
-};
+#[cfg(feature = "madara-hotstuff-runtime")]
+use madara_hotstuff_runtime::{AuraConfig, GenesisConfig, HotstuffConfig, SealingMode, SystemConfig, WASM_BINARY};
+#[cfg(feature = "madara-runtime")]
+use madara_runtime::{AuraConfig, GenesisConfig, GrandpaConfig, SealingMode, SystemConfig, WASM_BINARY};
 use mp_felt::Felt252Wrapper;
 use pallet_starknet::genesis_loader::{GenesisData, GenesisLoader, HexFelt};
 use sc_service::{BasePath, ChainType};
@@ -42,7 +43,10 @@ pub struct DevGenesisExt {
 impl sp_runtime::BuildStorage for DevGenesisExt {
     fn assimilate_storage(&self, storage: &mut Storage) -> Result<(), String> {
         BasicExternalities::execute_with_storage(storage, || {
+            #[cfg(feature = "madara-runtime")]
             madara_runtime::Sealing::set(&self.sealing);
+            #[cfg(feature = "madara-hotstuff-runtime")]
+            madara_hotstuff_runtime::Sealing::set(&self.sealing);
         });
         self.genesis_config.assimilate_storage(storage)
     }
@@ -181,9 +185,11 @@ fn testnet_genesis(
         // Authority-based consensus protocol used for block production
         aura: AuraConfig { authorities: initial_authorities.iter().map(|x| (x.0.clone())).collect() },
         // Deterministic finality mechanism used for block finalization
+        #[cfg(feature = "madara-runtime")]
         grandpa: GrandpaConfig { authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect() },
         /// Starknet Genesis configuration.
         starknet: starknet_genesis_config,
+        #[cfg(feature = "madara-hotstuff-runtime")]
         hotstuff: HotstuffConfig { authorities: initial_authorities.iter().map(|x| (x.2.clone())).collect() },
     }
 }

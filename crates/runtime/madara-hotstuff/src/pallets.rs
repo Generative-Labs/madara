@@ -113,7 +113,7 @@ impl frame_system::Config for Runtime {
 // --------------------------------------
 // Notes:
 // Aura is the consensus algorithm used for block production.
-// Grandpa is the consensus algorithm used for block finalization.
+// Hotstuff is the consensus algorithm used for block finalization.
 // We want to support multiple flavors of consensus algorithms.
 // Specifically we want to implement some proposals defined in the Starknet community forum.
 // For more information see: https://community.starknet.io/t/starknet-decentralized-protocol-i-introduction/2671
@@ -125,19 +125,6 @@ impl pallet_aura::Config for Runtime {
     type AuthorityId = AuraId;
     type DisabledValidators = ();
     type MaxAuthorities = ConstU32<32>;
-}
-
-/// Deterministic finality mechanism used for block finalization.
-/// TODO: Comment and explain the rationale behind the configuration items.
-impl pallet_grandpa::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-
-    type WeightInfo = ();
-    type MaxAuthorities = ConstU32<32>;
-    type MaxSetIdSessionEntries = ConstU64<0>;
-
-    type KeyOwnerProof = sp_core::Void;
-    type EquivocationReportSystem = ();
 }
 
 /// --------------------------------------

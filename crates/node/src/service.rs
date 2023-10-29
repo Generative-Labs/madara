@@ -9,9 +9,12 @@ use futures::channel::mpsc;
 use futures::future;
 use futures::future::BoxFuture;
 use futures::prelude::*;
+#[cfg(feature = "madara-hotstuff-runtime")]
 use hotstuff_consensus::LinkHalf as HotstuffLinkHalf;
-use madara_runtime::opaque::Block;
-use madara_runtime::{self, Hash, RuntimeApi, SealingMode, StarknetHasher};
+#[cfg(feature = "madara-hotstuff-runtime")]
+use madara_hotstuff_runtime::{self, opaque::Block, Hash, RuntimeApi, SealingMode, StarknetHasher, SLOT_DURATION};
+#[cfg(feature = "madara-runtime")]
+use madara_runtime::{self, opaque::Block, Hash, RuntimeApi, SealingMode, StarknetHasher, SLOT_DURATION};
 use mc_block_proposer::ProposerFactory;
 use mc_data_availability::avail::config::AvailConfig;
 use mc_data_availability::avail::AvailClient;
@@ -30,10 +33,11 @@ use prometheus_endpoint::Registry;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
 use sc_consensus::BasicQueue;
 use sc_consensus_aura::{SlotProportion, StartAuraParams};
+#[cfg(feature = "madara-runtime")]
 use sc_consensus_grandpa::{LinkHalf as GrandpaLinkHalf, SharedVoterState};
 pub use sc_executor::NativeElseWasmExecutor;
 use sc_service::error::Error as ServiceError;
-use sc_service::{new_db_backend, Configuration, TaskManager, WarpSyncParams};
+use sc_service::{new_db_backend, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryHandle, TelemetryWorker};
 use sp_api::offchain::OffchainStorage;
 use sp_api::{ConstructRuntimeApi, TransactionFor};
@@ -57,10 +61,16 @@ impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
     type ExtendHostFunctions = ();
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        #[cfg(feature = "madara-hotstuff-runtime")]
+        return madara_hotstuff_runtime::api::dispatch(method, data);
+        #[cfg(feature = "madara-runtime")]
         madara_runtime::api::dispatch(method, data)
     }
 
     fn native_version() -> sc_executor::NativeVersion {
+        #[cfg(feature = "madara-hotstuff-runtime")]
+        return madara_hotstuff_runtime::native_version();
+        #[cfg(feature = "madara-runtime")]
         madara_runtime::native_version()
     }
 }
@@ -74,9 +84,10 @@ type BoxBlockImport<Client> = sc_consensus::BoxBlockImport<Block, TransactionFor
 
 // Link half used in different consensus.
 pub enum ConsensusLinkHalf {
-    Grandpa(GrandpaLinkHalf<Block, FullClient, FullSelectChain>),
-
-    Hotstuff(HotstuffLinkHalf<Block, FullClient, FullSelectChain>),
+    #[cfg(feature = "madara-runtime")]
+    Link(GrandpaLinkHalf<Block, FullClient, FullSelectChain>),
+    #[cfg(feature = "madara-hotstuff-runtime")]
+    Link(HotstuffLinkHalf<Block, FullClient, FullSelectChain>),
 
     None,
 }
@@ -187,28 +198,124 @@ where
 }
 
 /// Build the import queue for the template runtime (aura + grandpa).
-pub fn build_aura_grandpa_import_queue(
+// pub fn build_aura_grandpa_import_queue(
+//     client: Arc<FullClient>,
+//     config: &Configuration,
+//     task_manager: &TaskManager,
+//     telemetry: Option<TelemetryHandle>,
+//     backend: Arc<FullBackend>,
+//     _madara_backend: Arc<MadaraBackend>,
+// ) -> Result<(BasicImportQueue<FullClient>, BoxBlockImport<FullClient>, ConsensusLinkHalf), ServiceError>
+// where
+//     RuntimeApi: ConstructRuntimeApi<Block, FullClient>,
+//     RuntimeApi: Send + Sync + 'static,
+// {
+//     let select_chain = sc_consensus::LongestChain::new(backend.clone());
+
+//     let (grandpa_block_import, grandpa_link) = sc_consensus_grandpa::block_import(
+//         client.clone(),
+//         &client as &Arc<_>,
+//         select_chain.clone(),
+//         telemetry.clone(),
+//     )?;
+
+//     let slot_duration = sc_consensus_aura::slot_duration(&*client)?;
+
+//     let create_inherent_data_providers = move |_, ()| async move {
+//         let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
+//         let slot = sp_consensus_aura::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
+//             *timestamp,
+//             slot_duration,
+//         );
+//         Ok((slot, timestamp))
+//     };
+
+//     let import_queue =
+//         sc_consensus_aura::import_queue::<AuraPair, _, _, _, _, _>(sc_consensus_aura::ImportQueueParams {
+//             block_import: grandpa_block_import.clone(),
+//             justification_import: Some(Box::new(grandpa_block_import.clone())),
+//             client,
+//             create_inherent_data_providers,
+//             spawner: &task_manager.spawn_essential_handle(),
+//             registry: config.prometheus_registry(),
+//             check_for_equivocation: Default::default(),
+//             telemetry,
+//             compatibility_mode: sc_consensus_aura::CompatibilityMode::None,
+//         })
+//         .map_err::<ServiceError, _>(Into::into)?;
+
+//     Ok((import_queue, Box::new(grandpa_block_import), ConsensusLinkHalf::Link(grandpa_link)))
+// }
+
+// /// Build the import queue for the template runtime (aura + hotstuff).
+// pub fn build_aura_hotstuff_import_queue(
+//     client: Arc<FullClient>,
+//     config: &Configuration,
+//     task_manager: &TaskManager,
+//     telemetry: Option<TelemetryHandle>,
+//     _backend: Arc<FullBackend>,
+//     _madara_backend: Arc<MadaraBackend>,
+// ) -> Result<(BasicImportQueue<FullClient>, BoxBlockImport<FullClient>, ConsensusLinkHalf), ServiceError>
+// where
+//     RuntimeApi: ConstructRuntimeApi<Block, FullClient>,
+//     RuntimeApi: Send + Sync + 'static,
+// {
+//     let (hotstuff_block_import, hotstuff_link) = hotstuff_consensus::block_import(client.clone(),
+// &client as &Arc<_>)?;
+
+//     let slot_duration = sc_consensus_aura::slot_duration(&*client)?;
+
+//     let create_inherent_data_providers = move |_, ()| async move {
+//         let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
+//         let slot =
+// sp_consensus_aura::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
+// *timestamp,             slot_duration,
+//         );
+//         Ok((slot, timestamp))
+//     };
+
+//     let import_queue =
+//         sc_consensus_aura::import_queue::<AuraPair, _, _, _, _,
+// _>(sc_consensus_aura::ImportQueueParams {             block_import:
+// hotstuff_block_import.clone(),             justification_import:
+// Some(Box::new(hotstuff_block_import.clone())),             client,
+//             create_inherent_data_providers,
+//             spawner: &task_manager.spawn_essential_handle(),
+//             registry: config.prometheus_registry(),
+//             check_for_equivocation: Default::default(),
+//             telemetry,
+//             compatibility_mode: sc_consensus_aura::CompatibilityMode::None,
+//         })
+//         .map_err::<ServiceError, _>(Into::into)?;
+
+//     Ok((import_queue, Box::new(hotstuff_block_import),
+// ConsensusLinkHalf::Hotstuff(hotstuff_link))) }
+
+/// Build the import queue for the template runtime (aura + hotstuff).
+pub fn build_common_import_queue(
     client: Arc<FullClient>,
     config: &Configuration,
     task_manager: &TaskManager,
     telemetry: Option<TelemetryHandle>,
-    backend: Arc<FullBackend>,
+    #[allow(unused_variables)] backend: Arc<FullBackend>,
     _madara_backend: Arc<MadaraBackend>,
 ) -> Result<(BasicImportQueue<FullClient>, BoxBlockImport<FullClient>, ConsensusLinkHalf), ServiceError>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient>,
     RuntimeApi: Send + Sync + 'static,
 {
-    let select_chain = sc_consensus::LongestChain::new(backend.clone());
+    #[cfg(feature = "madara-hotstuff-runtime")]
+    let (block_import, link) = hotstuff_consensus::block_import(client.clone(), &client as &Arc<_>)?;
 
-    let (grandpa_block_import, grandpa_link) = sc_consensus_grandpa::block_import(
+    #[cfg(feature = "madara-runtime")]
+    let (block_import, link) = sc_consensus_grandpa::block_import(
         client.clone(),
         &client as &Arc<_>,
-        select_chain.clone(),
+        sc_consensus::LongestChain::new(backend.clone()),
         telemetry.clone(),
     )?;
 
-    let slot_duration = sc_consensus_aura::slot_duration(&*client)?;
+    let slot_duration: hotstuff_primitives::SlotDuration = sc_consensus_aura::slot_duration(&*client)?;
 
     let create_inherent_data_providers = move |_, ()| async move {
         let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
@@ -221,8 +328,8 @@ where
 
     let import_queue =
         sc_consensus_aura::import_queue::<AuraPair, _, _, _, _, _>(sc_consensus_aura::ImportQueueParams {
-            block_import: grandpa_block_import.clone(),
-            justification_import: Some(Box::new(grandpa_block_import.clone())),
+            block_import: block_import.clone(),
+            justification_import: Some(Box::new(block_import.clone())),
             client,
             create_inherent_data_providers,
             spawner: &task_manager.spawn_essential_handle(),
@@ -233,50 +340,7 @@ where
         })
         .map_err::<ServiceError, _>(Into::into)?;
 
-    Ok((import_queue, Box::new(grandpa_block_import), ConsensusLinkHalf::Grandpa(grandpa_link)))
-}
-
-/// Build the import queue for the template runtime (aura + hotstuff).
-pub fn build_aura_hotstuff_import_queue(
-    client: Arc<FullClient>,
-    config: &Configuration,
-    task_manager: &TaskManager,
-    telemetry: Option<TelemetryHandle>,
-    _backend: Arc<FullBackend>,
-    _madara_backend: Arc<MadaraBackend>,
-) -> Result<(BasicImportQueue<FullClient>, BoxBlockImport<FullClient>, ConsensusLinkHalf), ServiceError>
-where
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient>,
-    RuntimeApi: Send + Sync + 'static,
-{
-    let (hotstuff_block_import, hotstuff_link) = hotstuff_consensus::block_import(client.clone(), &client as &Arc<_>)?;
-
-    let slot_duration = sc_consensus_aura::slot_duration(&*client)?;
-
-    let create_inherent_data_providers = move |_, ()| async move {
-        let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
-        let slot = sp_consensus_aura::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
-            *timestamp,
-            slot_duration,
-        );
-        Ok((slot, timestamp))
-    };
-
-    let import_queue =
-        sc_consensus_aura::import_queue::<AuraPair, _, _, _, _, _>(sc_consensus_aura::ImportQueueParams {
-            block_import: hotstuff_block_import.clone(),
-            justification_import: Some(Box::new(hotstuff_block_import.clone())),
-            client,
-            create_inherent_data_providers,
-            spawner: &task_manager.spawn_essential_handle(),
-            registry: config.prometheus_registry(),
-            check_for_equivocation: Default::default(),
-            telemetry,
-            compatibility_mode: sc_consensus_aura::CompatibilityMode::None,
-        })
-        .map_err::<ServiceError, _>(Into::into)?;
-
-    Ok((import_queue, Box::new(hotstuff_block_import), ConsensusLinkHalf::Hotstuff(hotstuff_link)))
+    Ok((import_queue, Box::new(block_import), ConsensusLinkHalf::Link(link)))
 }
 
 /// Build the import queue for the template runtime (manual seal).
@@ -313,13 +377,9 @@ pub fn new_full(
     sealing: SealingMode,
     da_layer: Option<(DaLayer, PathBuf)>,
     cache_more_things: bool,
-    enable_hotstuff: bool,
 ) -> Result<TaskManager, ServiceError> {
-    let build_import_queue = if sealing.is_default() {
-        if enable_hotstuff { build_aura_hotstuff_import_queue } else { build_aura_grandpa_import_queue }
-    } else {
-        build_manual_seal_import_queue
-    };
+    let build_import_queue =
+        if sealing.is_default() { build_common_import_queue } else { build_manual_seal_import_queue };
 
     let sc_service::PartialComponents {
         client,
@@ -332,20 +392,24 @@ pub fn new_full(
         other: (block_import, link, mut telemetry, madara_backend),
     } = new_partial(&config, build_import_queue, cache_more_things)?;
 
+    #[allow(unused_mut)]
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
 
+    #[cfg(feature = "madara-runtime")]
     let grandpa_protocol_name = sc_consensus_grandpa::protocol_standard_name(
         &client.block_hash(0).ok().flatten().expect("Genesis block exists; qed"),
         &config.chain_spec,
     );
 
+    #[cfg(feature = "madara-hotstuff-runtime")]
     let hotstuff_protocol_name = hotstuff_consensus::config::standard_name(
         &client.block_hash(0).ok().flatten().expect("Genesis block exists; qed"),
         &config.chain_spec,
     );
 
     let warp_sync_params = if sealing.is_default() {
-        if let ConsensusLinkHalf::Grandpa(link) = &link {
+        #[cfg(feature = "madara-runtime")]
+        if let ConsensusLinkHalf::Link(link) = &link {
             net_config.add_notification_protocol(sc_consensus_grandpa::grandpa_peers_set_config(
                 grandpa_protocol_name.clone(),
             ));
@@ -355,10 +419,12 @@ pub fn new_full(
                 link.shared_authority_set().clone(),
                 Vec::default(),
             ));
-            Some(WarpSyncParams::WithProvider(warp_sync))
+            Some(sc_service::WarpSyncParams::WithProvider(warp_sync))
         } else {
             None
         }
+        #[cfg(feature = "madara-hotstuff-runtime")]
+        None
     } else {
         None
     };
@@ -382,8 +448,9 @@ pub fn new_full(
     let role = config.role.clone();
     let force_authoring = config.force_authoring;
     let backoff_authoring_blocks: Option<()> = None;
+    #[cfg(feature = "madara-runtime")]
     let name = config.network.node_name.clone();
-    let enable_grandpa = !config.disable_grandpa && sealing.is_default() && !enable_hotstuff;
+    let enable_grandpa = !config.disable_grandpa && sealing.is_default();
     let prometheus_registry = config.prometheus_registry().cloned();
     let starting_block = client.info().best_number;
 
@@ -561,61 +628,65 @@ pub fn new_full(
     }
 
     if enable_grandpa {
-        // if the node isn't actively participating in consensus then it doesn't
-        // need a keystore, regardless of which protocol we use below.
-        let keystore = if role.is_authority() { Some(keystore_container.keystore()) } else { None };
+        #[cfg(feature = "madara-runtime")]
+        {
+            // if the node isn't actively participating in consensus then it doesn't
+            // need a keystore, regardless of which protocol we use below.
+            let keystore = if role.is_authority() { Some(keystore_container.keystore()) } else { None };
 
-        let grandpa_config = sc_consensus_grandpa::Config {
-            // FIXME #1578 make this available through chainspec
-            gossip_duration: Duration::from_millis(333),
-            justification_period: 512,
-            name: Some(name),
-            observer_enabled: false,
-            keystore,
-            local_role: role,
-            telemetry: telemetry.as_ref().map(|x| x.handle()),
-            protocol_name: grandpa_protocol_name,
-        };
-
-        if let ConsensusLinkHalf::Grandpa(link) = link {
-            // start the full GRANDPA voter
-            // NOTE: non-authorities could run the GRANDPA observer protocol, but at
-            // this point the full voter should provide better guarantees of block
-            // and vote data availability than the observer. The observer has not
-            // been tested extensively yet and having most nodes in a network run it
-            // could lead to finality stalls.
-            let grandpa_config = sc_consensus_grandpa::GrandpaParams {
-                config: grandpa_config,
-                link,
-                network,
-                sync: Arc::new(sync_service),
-                voting_rule: sc_consensus_grandpa::VotingRulesBuilder::default().build(),
-                prometheus_registry,
-                shared_voter_state: SharedVoterState::empty(),
+            let grandpa_config = sc_consensus_grandpa::Config {
+                // FIXME #1578 make this available through chainspec
+                gossip_duration: Duration::from_millis(333),
+                justification_period: 512,
+                name: Some(name),
+                observer_enabled: false,
+                keystore,
+                local_role: role,
                 telemetry: telemetry.as_ref().map(|x| x.handle()),
+                protocol_name: grandpa_protocol_name,
             };
 
-            // the GRANDPA voter task is considered infallible, i.e.
-            // if it fails we take down the service with it.
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "grandpa-voter",
-                None,
-                sc_consensus_grandpa::run_grandpa_voter(grandpa_config)?,
-            );
+            if let ConsensusLinkHalf::Link(link) = link {
+                // start the full GRANDPA voter
+                // NOTE: non-authorities could run the GRANDPA observer protocol, but at
+                // this point the full voter should provide better guarantees of block
+                // and vote data availability than the observer. The observer has not
+                // been tested extensively yet and having most nodes in a network run it
+                // could lead to finality stalls.
+                let grandpa_config = sc_consensus_grandpa::GrandpaParams {
+                    config: grandpa_config,
+                    link,
+                    network,
+                    sync: Arc::new(sync_service),
+                    voting_rule: sc_consensus_grandpa::VotingRulesBuilder::default().build(),
+                    prometheus_registry,
+                    shared_voter_state: SharedVoterState::empty(),
+                    telemetry: telemetry.as_ref().map(|x| x.handle()),
+                };
+
+                // the GRANDPA voter task is considered infallible, i.e.
+                // if it fails we take down the service with it.
+                task_manager.spawn_essential_handle().spawn_blocking(
+                    "grandpa-voter",
+                    None,
+                    sc_consensus_grandpa::run_grandpa_voter(grandpa_config)?,
+                );
+            }
         }
-    } else {
-        if let ConsensusLinkHalf::Hotstuff(link) = link {
-            let (voter, hotstuff_network) = hotstuff_consensus::consensus::start_hotstuff(
-                network,
-                link,
-                Arc::new(sync_service),
-                hotstuff_protocol_name,
-                keystore_container.keystore(),
-            )?;
+        #[cfg(feature = "madara-hotstuff-runtime")]
+        {
+            if let ConsensusLinkHalf::Link(link) = link {
+                let (voter, hotstuff_network) = hotstuff_consensus::consensus::start_hotstuff(
+                    network,
+                    link,
+                    Arc::new(sync_service),
+                    hotstuff_protocol_name,
+                    keystore_container.keystore(),
+                )?;
 
-            task_manager.spawn_essential_handle().spawn_blocking("hotstuff block voter", None, voter);
-
-            task_manager.spawn_essential_handle().spawn_blocking("hotstuff network", None, hotstuff_network);
+                task_manager.spawn_essential_handle().spawn_blocking("hotstuff block voter", None, voter);
+                task_manager.spawn_essential_handle().spawn_blocking("hotstuff network", None, hotstuff_network);
+            }
         }
     }
 
@@ -658,7 +729,7 @@ where
             inherent_data: &mut sp_inherents::InherentData,
         ) -> Result<(), sp_inherents::Error> {
             TIMESTAMP.with(|x| {
-                *x.borrow_mut() += madara_runtime::SLOT_DURATION;
+                *x.borrow_mut() += SLOT_DURATION;
                 inherent_data.put_data(sp_timestamp::INHERENT_IDENTIFIER, &*x.borrow())
             })
         }
@@ -729,6 +800,6 @@ type ChainOpsResult = Result<
 pub fn new_chain_ops(config: &mut Configuration, cache_more_things: bool) -> ChainOpsResult {
     config.keystore = sc_service::config::KeystoreConfig::InMemory;
     let sc_service::PartialComponents { client, backend, import_queue, task_manager, other, .. } =
-        new_partial::<_>(config, build_aura_grandpa_import_queue, cache_more_things)?;
+        new_partial::<_>(config, build_common_import_queue, cache_more_things)?;
     Ok((client, backend, import_queue, task_manager, other.3))
 }

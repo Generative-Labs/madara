@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+#[cfg(feature = "madara-hotstuff-runtime")]
+use madara_hotstuff_runtime::SealingMode;
+#[cfg(feature = "madara-runtime")]
 use madara_runtime::SealingMode;
 use mc_data_availability::DaLayer;
 use sc_cli::{Result, RpcMethods, RunCmd, SubstrateCli};
@@ -52,10 +55,6 @@ pub struct ExtendedRunCmd {
     /// increases the memory footprint of the node.
     #[clap(long)]
     pub cache: bool,
-
-    /// Choose hotstuff replace grandpa.
-    #[clap(long)]
-    pub enable_hotstuff: bool,
 }
 
 impl ExtendedRunCmd {
@@ -91,12 +90,10 @@ pub fn run_node(mut cli: Cli) -> Result<()> {
         }
     };
 
-    let enable_hotstuff = cli.run.enable_hotstuff;
-
     runner.run_node_until_exit(|config| async move {
         let sealing = cli.run.sealing.map(Into::into).unwrap_or_default();
         let cache = cli.run.cache;
-        service::new_full(config, sealing, da_config, cache, enable_hotstuff).map_err(sc_cli::Error::Service)
+        service::new_full(config, sealing, da_config, cache).map_err(sc_cli::Error::Service)
     })
 }
 

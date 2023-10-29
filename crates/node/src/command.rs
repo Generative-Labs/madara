@@ -1,4 +1,7 @@
 use frame_benchmarking_cli::{BenchmarkCmd, ExtrinsicFactory, SUBSTRATE_REFERENCE_HARDWARE};
+#[cfg(feature = "madara-hotstuff-runtime")]
+use madara_hotstuff_runtime::Block;
+#[cfg(feature = "madara-runtime")]
 use madara_runtime::Block;
 use sc_cli::{ChainSpec, RuntimeVersion, SubstrateCli};
 

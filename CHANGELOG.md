@@ -44,6 +44,8 @@
   madara node
 - feat(cache-option): add an option to enable aggressive caching in command-line
   parameters
+- feat: Added a `madara-hotstuff-runtime` runtime that replaces the Grandpa pallet with the HotStuff pallet
+- feat: Added two features, `madara-hotstuff-runtime` and `madara-runtime`, which are used to select between HotStuff and Grandpa consensus at compile-time. Running `cargo build --features madara-hotstuff-runtime` will use HotStuff consensus to replace Grandpa consensus, while using `cargo build --features madara-runtime` will use the original runtime with Grandpa consensus
 
 ## v0.4.0
 

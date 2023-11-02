@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use hotstuff_primitives::AuthorityId as HotStuffId;
-#[cfg(feature = "madara-hotstuff-runtime")]
+#[cfg(feature = "with-hotstuff-runtime")]
 use madara_hotstuff_runtime::{AuraConfig, GenesisConfig, HotstuffConfig, SealingMode, SystemConfig, WASM_BINARY};
-#[cfg(feature = "madara-runtime")]
+#[cfg(not(feature = "with-hotstuff-runtime"))]
 use madara_runtime::{AuraConfig, GenesisConfig, GrandpaConfig, SealingMode, SystemConfig, WASM_BINARY};
 use mp_felt::Felt252Wrapper;
 use pallet_starknet::genesis_loader::{GenesisData, GenesisLoader, HexFelt};
@@ -185,11 +185,11 @@ fn testnet_genesis(
         // Authority-based consensus protocol used for block production
         aura: AuraConfig { authorities: initial_authorities.iter().map(|x| (x.0.clone())).collect() },
         // Deterministic finality mechanism used for block finalization
-        #[cfg(feature = "madara-runtime")]
+        #[cfg(not(feature = "with-hotstuff-runtime"))]
         grandpa: GrandpaConfig { authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect() },
         /// Starknet Genesis configuration.
         starknet: starknet_genesis_config,
-        #[cfg(feature = "madara-hotstuff-runtime")]
+        #[cfg(feature = "with-hotstuff-runtime")]
         hotstuff: HotstuffConfig { authorities: initial_authorities.iter().map(|x| (x.2.clone())).collect() },
     }
 }

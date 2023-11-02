@@ -122,6 +122,4 @@ disable-transaction-fee = ["madara-runtime/disable-transaction-fee"]
 # This is the way to run a sharingan chain
 sharingan = []
 
-madara-runtime = []
-
-madara-hotstuff-runtime = []
+with-hotstuff-runtime = []

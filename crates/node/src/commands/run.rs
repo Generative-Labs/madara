@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-#[cfg(feature = "madara-hotstuff-runtime")]
+#[cfg(feature = "with-hotstuff-runtime")]
 use madara_hotstuff_runtime::SealingMode;
-#[cfg(feature = "madara-runtime")]
+#[cfg(not(feature = "with-hotstuff-runtime"))]
 use madara_runtime::SealingMode;
 use mc_data_availability::DaLayer;
 use sc_cli::{Result, RpcMethods, RunCmd, SubstrateCli};

@@ -4562,7 +4562,7 @@ dependencies = [
 [[package]]
 name = "hotstuff-consensus"
 version = "0.1.0"
-source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#ec7b9bbc6430ba53ea755359f5089d2a455bf1c8"
+source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#28e2dd5e1bad3424f599968eb07e362114582819"
 dependencies = [
  "array-bytes 6.1.0",
  "async-recursion",
@@ -4599,7 +4599,7 @@ dependencies = [
 [[package]]
 name = "hotstuff-primitives"
 version = "0.1.0"
-source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#ec7b9bbc6430ba53ea755359f5089d2a455bf1c8"
+source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#28e2dd5e1bad3424f599968eb07e362114582819"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
@@ -7631,7 +7631,7 @@ dependencies = [
 [[package]]
 name = "pallet-hotstuff"
 version = "4.0.0-dev"
-source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#ec7b9bbc6430ba53ea755359f5089d2a455bf1c8"
+source = "git+https://github.com/Generative-Labs/hotstuff.git?branch=polkadot-v0.9.43#28e2dd5e1bad3424f599968eb07e362114582819"
 dependencies = [
  "frame-benchmarking",
  "frame-support",

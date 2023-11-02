@@ -2,6 +2,14 @@
 
 ## Next release
 
+- dev(compilation): add incremental compilation
+
+## v0.5.0
+
+- chore: release v0.5.0
+- test: add transaction pool logic unit tests
+- feat(client): spawn a task that listen to storage changes and build the
+  resulting commiment state diff for each block
 - dev(StarknetRPC): log error received from node before mapping to
   InternalServerError
 - fix: change 'nonce too high' to log in debug instead of info
@@ -44,6 +52,7 @@
   madara node
 - feat(cache-option): add an option to enable aggressive caching in command-line
   parameters
+- fix: Ensure transaction checks are compatible with starknet-rs
 - feat: Added a `madara-hotstuff-runtime` runtime that replaces the Grandpa
   pallet with the HotStuff pallet
 - feat: Added two features, `madara-hotstuff-runtime` and `madara-runtime`,
@@ -52,6 +61,7 @@
   use HotStuff consensus to replace Grandpa consensus, while using
   `cargo build --features madara-runtime` will use the original runtime with
   Grandpa consensus
+
 
 ## v0.4.0
 

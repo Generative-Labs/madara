@@ -62,7 +62,6 @@
   `cargo build --features madara-runtime` will use the original runtime with
   Grandpa consensus
 
-
 ## v0.4.0
 
 - chore: release v0.4.0

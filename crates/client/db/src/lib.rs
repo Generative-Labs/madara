@@ -54,6 +54,8 @@ pub(crate) mod columns {
     ///
     /// This column should only be accessed if the `--cache` flag is enabled.
     pub const STARKNET_TRANSACTION_HASHES_CACHE: u32 = 5;
+
+    pub const L1_HEADER: u32 = 6;
 }
 
 pub mod static_keys {

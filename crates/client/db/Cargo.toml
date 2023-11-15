@@ -29,5 +29,7 @@ sp-database = { workspace = true, default-features = true }
 sp-runtime = { workspace = true, default-features = true }
 uuid = "1.4.1"
 
+mp-block = { workspace = true, features = ["parity-scale-codec"] }
+
 [features]
 default = ["kvdb-rocksdb", "parity-db"]

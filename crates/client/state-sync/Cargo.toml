@@ -1,0 +1,34 @@
+[package]
+name = "mc-state-sync"
+edition.workspace = true
+repository.workspace = true
+version.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = { workspace = true }
+anyhow = { workspace = true }
+
+# Ethereum
+ethers = "2.0.7"
+
+# Starknet
+blockifier = { workspace = true, default-features = true }
+starknet_api = { workspace = true }
+
+# Substrate
+sp-runtime = { workspace = true }
+sp-blockchain = { workspace = true }
+sc-client-api = { workspace = true }
+# Madara
+mp-transactions = { workspace = true }
+mc-db = { workspace = true }
+
+[dev-dependencies]
+substrate-test-client = { workspace = true }
+madara-runtime = { workspace = true }
+serde_json = { workspace = true }
+pallet-starknet = { workspace = true }
+futures = { workspace = true }
+project-root = "0.2.2"

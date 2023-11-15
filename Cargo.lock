@@ -6330,6 +6330,7 @@ dependencies = [
  "ethers",
  "kvdb-rocksdb",
  "log",
+ "mp-block",
  "parity-db",
  "parity-scale-codec",
  "sc-client-db",
@@ -6425,6 +6426,28 @@ dependencies = [
  "starknet-core",
  "starknet_api",
  "thiserror",
+]
+
+[[package]]
+name = "mc-state-sync"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blockifier",
+ "ethers",
+ "futures",
+ "madara-runtime",
+ "mc-db",
+ "mp-transactions",
+ "pallet-starknet",
+ "project-root",
+ "sc-client-api",
+ "serde_json",
+ "sp-blockchain",
+ "sp-runtime 7.0.0",
+ "starknet_api",
+ "substrate-test-client",
 ]
 
 [[package]]

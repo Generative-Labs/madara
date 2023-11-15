@@ -39,6 +39,20 @@ pub struct Header {
     pub extra_data: Option<U256>,
 }
 
+///
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "parity-scale-codec", derive(parity_scale_codec::Encode, parity_scale_codec::Decode))]
+pub struct L1StarknetHead {
+    // starknet block number.
+    pub block_number: u64,
+    // starknet block hash.
+    pub block_hash: StarkHash,
+    // starknet global state root.
+    pub global_state_root: StarkHash,
+    // sr_todo include eth info?
+}
+
 impl Header {
     /// Creates a new header.
     #[allow(clippy::too_many_arguments)]

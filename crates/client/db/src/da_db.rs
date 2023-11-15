@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use ethers::types::U256;
+use mp_block::L1StarknetHead;
 // Substrate
 use scale_codec::{Decode, Encode};
 use sp_database::Database;
@@ -67,5 +68,33 @@ impl<B: BlockT> DaDb<B> {
         self.db.commit(transaction).map_err(|e| format!("{:?}", e))?;
 
         Ok(())
+    }
+
+    /// Store the starknet block header sync from l1
+    pub fn write_l1_starknet_block_header(&self, l1_header: &L1StarknetHead) -> Result<(), String> {
+        let mut transaction = sp_database::Transaction::new();
+
+        transaction.set(crate::columns::L1_HEADER, &l1_header.block_number.encode(), &l1_header.encode());
+        transaction.set(crate::columns::L1_HEADER, &l1_header.block_hash.encode(), &l1_header.block_number.encode());
+
+        self.db.commit(transaction).map_err(|e| format!("{:?}", e))?;
+
+        Ok(())
+    }
+
+    pub fn l1_starknet_block_header_from_block_hash(&self, block_hash: B::Hash) -> Result<L1StarknetHead, String> {
+        match self.db.get(crate::columns::L1_HEADER, &block_hash.encode()) {
+            Some(raw) => self.l1_starknet_block_header_from_block_number(
+                u64::decode(&mut &raw[..]).map_err(|e| format!("decode error {}", e.to_string()))?,
+            ),
+            None => Err(format!("no found starknet block header from block hash: {}", block_hash)),
+        }
+    }
+
+    pub fn l1_starknet_block_header_from_block_number(&self, block_number: u64) -> Result<L1StarknetHead, String> {
+        match self.db.get(crate::columns::L1_HEADER, &block_number.encode()) {
+            Some(raw) => L1StarknetHead::decode(&mut &raw[..]).map_err(|e| e.to_string()),
+            None => Err(format!("no found starknet block header from block number {}", block_number)),
+        }
     }
 }

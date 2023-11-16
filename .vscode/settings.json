@@ -1,3 +1,6 @@
 {
-  "eslint.workingDirectories": ["tests"]
+  "eslint.workingDirectories": [
+    "tests"
+  ],
+  "rust-analyzer.checkOnSave": true
 }

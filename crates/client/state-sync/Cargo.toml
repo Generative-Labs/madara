@@ -21,9 +21,16 @@ starknet_api = { workspace = true }
 sp-runtime = { workspace = true }
 sp-blockchain = { workspace = true }
 sc-client-api = { workspace = true }
+sc-client-db = { workspace = true }
 # Madara
 mp-transactions = { workspace = true }
 mc-db = { workspace = true }
+
+frame-support = { worksapce = true }
+mp-storage = { workspace = true  }
+indexmap = { workspace = true }
+sp-state-machine = { workspace = true }
+sp-core = { workspace = true }
 
 [dev-dependencies]
 substrate-test-client = { workspace = true }
@@ -32,3 +39,13 @@ serde_json = { workspace = true }
 pallet-starknet = { workspace = true }
 futures = { workspace = true }
 project-root = "0.2.2"
+test-case = "3.1.0"
+lazy_static = "1.4.0"
+hexlit = "0.5.5"
+assert_matches = "1.5.0"
+mp-felt = { workspace = true, features = ["parity-scale-codec", "serde"] }
+starknet-core = { workspace = true }
+starknet-crypto = { workspace = true, features = ["alloc"] }
+sc-block-builder = { workspace = true }
+sp-inherents = { workspace = true }
+sp-timestamp = { workspace = true }

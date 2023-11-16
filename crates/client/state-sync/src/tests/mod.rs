@@ -3,6 +3,7 @@ pub mod constants;
 pub mod helpers;
 
 use std::sync::Arc;
+
 use blockifier::state::cached_state::CommitmentStateDiff;
 use constants::*;
 use frame_support::assert_ok;
@@ -15,15 +16,20 @@ pub use madara_runtime::{
 use mp_felt::Felt252Wrapper;
 use mp_transactions::InvokeTransactionV1;
 use pallet_starknet::genesis_loader::{GenesisData, GenesisLoader};
+use pallet_starknet::runtime_api::StarknetRuntimeApi;
 use pallet_starknet::Call as StarknetCall;
 use sc_block_builder::{BlockBuilderProvider, RecordProof};
 use sc_client_api::ExecutionStrategy::NativeElseWasm;
 use sc_client_api::HeaderBackend;
+use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
 use sp_inherents::InherentData;
 use sp_state_machine::BasicExternalities;
 use sp_timestamp::{Timestamp, INHERENT_IDENTIFIER};
+use starknet_api::api_core::{ContractAddress, EntryPointSelector, PatriciaKey};
+use starknet_api::transaction::Calldata;
 pub use substrate_test_client::*;
+
 use super::*;
 
 pub type Backend = sc_client_db::Backend<runtime::Block>;
@@ -139,6 +145,7 @@ fn test_basic_state_diff() {
     // 4. apply state diff to backend.
     // 5. check starknet contract state by runtime api
     let (client, backend) = create_test_client();
+    let client = Arc::new(client);
 
     let sender_account = get_account_address(None, AccountType::V0(AccountTypeV0Inner::NoValidate));
     let felt_252_sender_account = sender_account.into();
@@ -195,6 +202,34 @@ fn test_basic_state_diff() {
 
     assert_eq!(commitment_state_diff, commitment_state_diff2);
 
-    let mut sync_worker = StateSyncWorker::new(Arc::new(client), backend);
-    sync_worker.apply_state_diff(commitment_state_diff2);
+    let mut sync_worker = StateSyncWorker::new(client.clone(), backend);
+    sync_worker.apply_state_diff(2, commitment_state_diff2);
+
+    // call contract
+    let expected_erc20_address = ContractAddress(PatriciaKey(
+        StarkFelt::try_from("00dc58c1280862c95964106ef9eba5d9ed8c0c16d05883093e4540f22b829dff").unwrap(),
+    ));
+
+    let block_info = client.info();
+    let call_args = build_get_balance_contract_call(sender_account.0.0);
+    let res = client.runtime_api().call(block_info.best_hash, expected_erc20_address, call_args.0, call_args.1).unwrap().unwrap();
+    
+    pretty_assertions::assert_eq!(
+        res,
+        vec![
+            Felt252Wrapper::from_hex_be("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF").unwrap(),
+            Felt252Wrapper::from_hex_be("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF").unwrap()
+        ]
+    );
+}
+
+pub fn build_get_balance_contract_call(account_address: StarkFelt) -> (EntryPointSelector, Calldata) {
+    let balance_of_selector = EntryPointSelector(
+        StarkFelt::try_from("0x02e4263afad30923c891518314c3c95dbe830a16874e8abc5777a9a20b54c76e").unwrap(),
+    );
+    let calldata = Calldata(Arc::new(vec![
+        account_address, // owner address
+    ]));
+
+    (balance_of_selector, calldata)
 }

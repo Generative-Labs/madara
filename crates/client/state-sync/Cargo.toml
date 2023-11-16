@@ -31,10 +31,15 @@ mp-storage = { workspace = true  }
 indexmap = { workspace = true }
 sp-state-machine = { workspace = true }
 sp-core = { workspace = true }
+madara-runtime = { workspace = true }
+sp-api = { workspace = true }
+mc-rpc-core = { workspace = true }
+mp-block = { workspace = true }
+mp-hashers = { workspace = true }
+mp-digest-log = { workspace = true }
 
 [dev-dependencies]
 substrate-test-client = { workspace = true }
-madara-runtime = { workspace = true }
 serde_json = { workspace = true }
 pallet-starknet = { workspace = true }
 futures = { workspace = true }
@@ -49,3 +54,5 @@ starknet-crypto = { workspace = true, features = ["alloc"] }
 sc-block-builder = { workspace = true }
 sp-inherents = { workspace = true }
 sp-timestamp = { workspace = true }
+pretty_assertions = { workspace = true }
+

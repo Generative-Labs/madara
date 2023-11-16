@@ -5,20 +5,26 @@ use anyhow::Result;
 use async_trait::async_trait;
 use blockifier::state::cached_state::CommitmentStateDiff;
 use ethers::types::I256;
+use frame_support::{Identity, StorageHasher};
+use indexmap::IndexMap;
+use madara_runtime::{Block as SubstrateBlock, Header as SubstrateHeader};
+use mc_rpc_core::utils::get_block_by_block_hash;
+use mp_block::{Block, Header};
+use mp_digest_log::MADARA_ENGINE_ID;
+use mp_hashers::pedersen::PedersenHasher;
+use mp_storage::{SN_COMPILED_CLASS_HASH_PREFIX, SN_CONTRACT_CLASS_HASH_PREFIX, SN_NONCE_PREFIX, SN_STORAGE_PREFIX};
 use mp_transactions::Transaction;
+use sc_client_api::backend::NewBlockState::Best;
 use sc_client_api::backend::{Backend, BlockImportOperation};
 use sp_blockchain::HeaderBackend;
-use sp_runtime::traits::Block as BlockT;
-use starknet_api::block::{BlockHash, BlockNumber};
-use starknet_api::state::StateDiff;
+use sp_core::{Encode, H256};
+use sp_runtime::generic::{Digest, DigestItem, Header as GenericHeader};
+use sp_runtime::traits::BlakeTwo256;
+use sp_state_machine::{OverlayedChanges, StorageKey, StorageValue};
 use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonce, PatriciaKey};
+use starknet_api::block::{BlockHash, BlockNumber};
 use starknet_api::hash::StarkFelt;
-use starknet_api::state::StorageKey as StarknetStorageKey;
-use mp_storage::{SN_COMPILED_CLASS_HASH_PREFIX, SN_CONTRACT_CLASS_HASH_PREFIX, SN_NONCE_PREFIX, SN_STORAGE_PREFIX};
-use indexmap::IndexMap;
-use frame_support::{Identity, StorageHasher};
-use sp_state_machine::{ StorageKey, StorageValue};
-use sp_core::Encode;
+use starknet_api::state::{StateDiff, StorageKey as StarknetStorageKey};
 
 #[cfg(test)]
 pub mod tests;
@@ -32,21 +38,19 @@ pub trait L1StateProvider {
     async fn get_transaction(&self, l2_block_number: I256) -> Result<Vec<Transaction>>;
 }
 
-pub struct StateSyncWorker<B: BlockT, C, BE> {
+pub struct StateSyncWorker<B, C, BE> {
     client: Arc<C>,
     substrate_backend: Arc<BE>,
     phantom_data: PhantomData<B>,
 }
 
-impl<B: BlockT, C, BE> StateSyncWorker<B, C, BE>
+impl<B, C, BE> StateSyncWorker<B, C, BE>
 where
+    B: sp_api::BlockT<Hash = H256, Header = GenericHeader<u32, BlakeTwo256>>,
     C: HeaderBackend<B>,
     BE: Backend<B>,
 {
-    pub fn new(
-        client: Arc<C>,
-        substrate_backend: Arc<BE>,
-    ) -> Self {
+    pub fn new(client: Arc<C>, substrate_backend: Arc<BE>) -> Self {
         Self { client, substrate_backend, phantom_data: PhantomData }
     }
 
@@ -55,14 +59,59 @@ where
     // and the madara blockchain does not have an independent state root,
     // we temporarily use the highest Substrate block as the latest state.
     // Then, we apply the state difference to the state represented by the state root of this block.
-    fn apply_state_diff(&mut self, commitment_state_diff: CommitmentStateDiff) {
+    fn apply_state_diff(&mut self, starknet_block_number: u64, commitment_state_diff: CommitmentStateDiff) {
         // Backend::begin_state_operation, Backend::commit_operation.
         let block_info = self.client.info();
-        //let block_import_operation = BlockImportOperation::<B>::default();
-        // self.substrate_backend.begin_state_operation();
+        let starknet_block_info = get_block_by_block_hash(self.client.as_ref(), block_info.best_hash).unwrap();
+        let starknet_block = Block::new(
+            Header {
+                parent_block_hash: starknet_block_info.header().hash::<PedersenHasher>().into(),
+                block_number: starknet_block_number,
+                global_state_root: Default::default(),
+                sequencer_address: Default::default(),
+                block_timestamp: Default::default(),
+                transaction_count: 0,
+                transaction_commitment: Default::default(),
+                event_count: Default::default(),
+                event_commitment: Default::default(),
+                protocol_version: starknet_block_info.header().protocol_version,
+                extra_data: Default::default(),
+            },
+            Default::default(),
+        );
+
+        let digest = DigestItem::Consensus(MADARA_ENGINE_ID, mp_digest_log::Log::Block(starknet_block).encode());
+
+        let mut substrate_block = SubstrateBlock {
+            header: SubstrateHeader {
+                parent_hash: block_info.best_hash,
+                number: block_info.best_number.try_into().unwrap_or_default(),
+                // todo calculate substrate state root
+                state_root: Default::default(),
+                extrinsics_root: Default::default(),
+                digest: Digest { logs: vec![digest] },
+            },
+            extrinsics: Default::default(),
+        };
+
+        substrate_block.header.number += 1;
+
         let mut operation = self.substrate_backend.begin_operation().unwrap();
         let storage_changes: InnerStorageChangeSet = commitment_state_diff.into();
+        let mut overlay = OverlayedChanges::default();
+
+        for (k, v) in storage_changes.changes.iter() {
+            overlay.set_storage(k.to_vec(), v.clone());
+        }
+
+        let be = self.substrate_backend.state_at(block_info.best_hash).unwrap();
+
+        let root = overlay.storage_root(&be, &mut Default::default(), Default::default());
+        substrate_block.header.state_root = root;
+
         operation.update_storage(storage_changes.changes, storage_changes.child_changes).unwrap();
+        operation.set_block_data(substrate_block.header, None, None, None, Best).unwrap();
+
         self.substrate_backend.begin_state_operation(&mut operation, block_info.best_hash).unwrap();
         self.substrate_backend.commit_operation(operation).unwrap();
     }
@@ -175,8 +224,9 @@ impl From<CommitmentStateDiff> for InnerStorageChangeSet {
         }
 
         for (address, storages) in commitment_state_diff.storage_updates.iter() {
-            for (sk, value) in storages.iter(){
-                let storage_key = storage_key_build(SN_STORAGE_PREFIX.clone(),&[address.encode(), sk.encode()].concat());
+            for (sk, value) in storages.iter() {
+                let storage_key =
+                    storage_key_build(SN_STORAGE_PREFIX.clone(), &[address.encode(), sk.encode()].concat());
                 let storage_value = value.encode();
                 changes.push((storage_key, Some(storage_value)));
             }

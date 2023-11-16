@@ -12717,6 +12717,7 @@ dependencies = [
  "async-trait",
  "blockifier",
  "const-decoder",
+ "ethereum-types",
  "hex",
  "httpmock",
  "keccak-hash",

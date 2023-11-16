@@ -1,6 +1,6 @@
 use std::{time::Duration, num::NonZeroU64};
 use primitive_types::H160;
-
+use mp_hashers::HasherT;
 // use tokio::sync::mpsc;
 
 use crate::ethereum::EthereumApi;
@@ -21,7 +21,7 @@ pub async fn sync_from_l1_loop<T>(
     context: L1SyncContext<T>,
 ) -> anyhow::Result<()>
 where
-    T: EthereumApi<H> + Clone,
+    T: EthereumApi + Clone,
 {
     let L1SyncContext {
         ethereum,

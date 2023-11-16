@@ -1,9 +1,7 @@
 use primitive_types::{H160, H256, U256};
 // use stark_hash::Felt;
 
-use starknet_api::block::{BlockNumber, BlockHash};
-use mp_hashers::HasherT;
-use mp_commitments::StateCommitmentTree;
+use starknet_api::{block::{BlockNumber, BlockHash}, hash::{StarkHash, StarkFelt}};
 
 /// Ethereum network chains running Starknet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,13 +10,6 @@ pub enum EthereumChain {
     Goerli,
     Other(primitive_types::U256),
 }
-
-/// The Starknet elliptic curve Field Element.
-///
-/// Forms the basic building block of most Starknet interactions.
-#[derive(Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
-pub struct Felt([u8; 32]);
-
 
 pub mod core_addr {
     use const_decoder::Decoder;
@@ -31,15 +22,15 @@ pub mod core_addr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct EthereumStateUpdate<H:HasherT> {
-    pub state_root: StateCommitmentTree<H>,
+pub struct EthereumStateUpdate {
+    pub state_root: StarkHash,
     pub block_number: BlockNumber,
     pub block_hash: BlockHash,
 }
 
 #[async_trait::async_trait]
-pub trait EthereumApi<H: HasherT> {
-    async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate<H>>;
+pub trait EthereumApi {
+    async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate>;
     async fn get_chain(&self) -> anyhow::Result<EthereumChain>;
 }
 
@@ -118,21 +109,19 @@ impl EthereumClient {
 }
 
 #[async_trait::async_trait]
-impl<H: HasherT> EthereumApi<H> for EthereumClient {
+impl  EthereumApi for EthereumClient {
 
-    async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate<H>> {
+    async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate> {
         let hash = self.get_finalized_block_hash().await?;
         let hash = format!("0x{}", hex::encode(hash.as_bytes()));
         let addr = format!("0x{}", hex::encode(address.as_bytes()));
-        let mut tree = StateCommitmentTree::<HasherT>::default();            
 
         Ok(EthereumStateUpdate {
             state_root: self
                 .call_starknet_contract(&hash, &addr, "stateRoot()")
                 .await
                 .and_then(|value| get_h256(&value))
-                .and_then(get_felt)
-                .map(tree)?,
+                .and_then(get_felt)?,
             block_hash: self
                 .call_starknet_contract(&hash, &addr, "stateBlockHash()")
                 .await
@@ -189,14 +178,15 @@ fn get_u256(value: &serde_json::Value) -> anyhow::Result<U256> {
         .ok_or(anyhow::anyhow!("Failed to fetch U256"))
 }
 
-fn get_felt(value: H256) -> anyhow::Result<Felt> {
-    let felt = Felt::from_be_slice(value.as_bytes())?;
+fn get_felt(value: H256) -> anyhow::Result<StarkHash> {
+    // TODO 这样编码方式是否正确？？原来使用的是小端编码？？
+    let felt = StarkFelt::new(*value.as_fixed_bytes())?; 
     Ok(felt)
 }
 
 fn get_number(value: U256) -> anyhow::Result<BlockNumber> {
     let value = value.as_u64();
-    BlockNumber::new(value).ok_or(anyhow::anyhow!("Failed to read u64 from U256"))
+    Ok(BlockNumber(value))
 }
 
 fn lpad64(value: &str) -> String {
@@ -310,10 +300,9 @@ mod tests {
             H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")?;
         let global_root =
             H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")?;
-
-        let mut tree = StateCommitmentTree::<HasherT>::default();            
+            
         let expected = EthereumStateUpdate {
-            state_root: tree,
+            state_root: Default::default(),
             block_number: get_number(block_number)?,
             block_hash: BlockHash(get_felt(block_hash)?),
         };

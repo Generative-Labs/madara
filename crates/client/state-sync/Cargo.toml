@@ -12,12 +12,12 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 anyhow = { workspace = true }
 tokio-retry = "0.3.0"
 async-trait = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["json"]}
 primitive-types = { workspace = true }
 blockifier = { workspace = true, default-features = true }
 starknet_api = { workspace = true }
-mp-hashers = { workspace = true }
-mp-commitments = { workspace = true }
+mp-hashers = { workspace = true, default-features = true }
+mp-commitments = { workspace = true, default-features = true }
 serde_json = { workspace = true, features = [
     "arbitrary_precision",
     "raw_value",

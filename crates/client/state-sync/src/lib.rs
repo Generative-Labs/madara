@@ -1,10 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use anyhow::Result;
-use async_trait::async_trait;
 use blockifier::state::cached_state::CommitmentStateDiff;
-use ethers::types::I256;
 use frame_support::{Identity, StorageHasher};
 use indexmap::IndexMap;
 use madara_runtime::{Block as SubstrateBlock, Header as SubstrateHeader};
@@ -13,30 +10,19 @@ use mp_block::{Block, Header};
 use mp_digest_log::MADARA_ENGINE_ID;
 use mp_hashers::pedersen::PedersenHasher;
 use mp_storage::{SN_COMPILED_CLASS_HASH_PREFIX, SN_CONTRACT_CLASS_HASH_PREFIX, SN_NONCE_PREFIX, SN_STORAGE_PREFIX};
-use mp_transactions::Transaction;
 use sc_client_api::backend::NewBlockState::Best;
 use sc_client_api::backend::{Backend, BlockImportOperation};
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{HeaderBackend, Info};
 use sp_core::{Encode, H256};
 use sp_runtime::generic::{Digest, DigestItem, Header as GenericHeader};
 use sp_runtime::traits::BlakeTwo256;
 use sp_state_machine::{OverlayedChanges, StorageKey, StorageValue};
 use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonce, PatriciaKey};
-use starknet_api::block::{BlockHash, BlockNumber};
 use starknet_api::hash::StarkFelt;
-use starknet_api::state::{StateDiff, StorageKey as StarknetStorageKey};
+use starknet_api::state::{StorageKey as StarknetStorageKey};
 
 #[cfg(test)]
 pub mod tests;
-
-#[async_trait]
-pub trait L1StateProvider {
-    async fn latest_proved_block(&self) -> Result<(BlockNumber, BlockHash)>;
-
-    async fn get_state_diffs(&self, l2_block_number: I256) -> Result<(BlockHash, StateDiff)>;
-
-    async fn get_transaction(&self, l2_block_number: I256) -> Result<Vec<Transaction>>;
-}
 
 pub struct StateSyncWorker<B, C, BE> {
     client: Arc<C>,
@@ -55,31 +41,14 @@ where
     }
 
     // Apply the state difference to the data layer.
-    // Since the madara block is currently wrapped within a substrate block,
-    // and the madara blockchain does not have an independent state root,
-    // we temporarily use the highest Substrate block as the latest state.
-    // Then, we apply the state difference to the state represented by the state root of this block.
-    fn apply_state_diff(&mut self, starknet_block_number: u64, commitment_state_diff: CommitmentStateDiff) {
-        // Backend::begin_state_operation, Backend::commit_operation.
+    fn apply_state_diff(
+        &mut self,
+        starknet_block_number: u64,
+        commitment_state_diff: CommitmentStateDiff,
+    ) -> Result<(), Error> {
         let block_info = self.client.info();
-        let starknet_block_info = get_block_by_block_hash(self.client.as_ref(), block_info.best_hash).unwrap();
-        let starknet_block = Block::new(
-            Header {
-                parent_block_hash: starknet_block_info.header().hash::<PedersenHasher>().into(),
-                block_number: starknet_block_number,
-                global_state_root: Default::default(),
-                sequencer_address: Default::default(),
-                block_timestamp: Default::default(),
-                transaction_count: 0,
-                transaction_commitment: Default::default(),
-                event_count: Default::default(),
-                event_commitment: Default::default(),
-                protocol_version: starknet_block_info.header().protocol_version,
-                extra_data: Default::default(),
-            },
-            Default::default(),
-        );
 
+        let starknet_block = self.create_starknet_block(&block_info, starknet_block_number as u32)?;
         let digest = DigestItem::Consensus(MADARA_ENGINE_ID, mp_digest_log::Log::Block(starknet_block).encode());
 
         let mut substrate_block = SubstrateBlock {
@@ -93,27 +62,61 @@ where
             },
             extrinsics: Default::default(),
         };
-
         substrate_block.header.number += 1;
 
-        let mut operation = self.substrate_backend.begin_operation().unwrap();
         let storage_changes: InnerStorageChangeSet = commitment_state_diff.into();
+        substrate_block.header.state_root =
+            self.calculate_state_root_after_storage_change(&storage_changes, block_info.best_hash);
+
+        let mut operation = self
+            .substrate_backend
+            .begin_operation()
+            .and_then(|mut op| {
+                op.update_storage(storage_changes.changes, storage_changes.child_changes)?;
+                op.set_block_data(substrate_block.header, None, None, None, Best)?;
+                Ok(op)
+            })
+            .map_err(|e| Error::ConstructTransaction(e.to_string()))?;
+
+        self.substrate_backend
+            .begin_state_operation(&mut operation, block_info.best_hash)
+            .map_err(|e| Error::CommitStorage(e.to_string()))?;
+
+        self.substrate_backend.commit_operation(operation).map_err(|e| Error::CommitStorage(e.to_string()))?;
+
+        Ok(())
+    }
+
+    fn create_starknet_block(&self, block_chain_info: &Info<B>, block_number: u32) -> Result<Block, Error> {
+        if block_chain_info.best_number >= block_number {
+            return Err(Error::AlreadyInChain);
+        }
+
+        let best_starknet_block = get_block_by_block_hash(self.client.as_ref(), block_chain_info.best_hash)
+            .ok_or_else(|| Error::UnknownBlock)?;
+
+        let mut starknet_header = Header::default();
+        starknet_header.parent_block_hash = best_starknet_block.header().hash::<PedersenHasher>().into();
+        starknet_header.block_number = block_number as u64;
+        starknet_header.protocol_version = best_starknet_block.header().protocol_version;
+
+        Ok(Block::new(starknet_header, Default::default()))
+    }
+
+    fn calculate_state_root_after_storage_change(
+        &self,
+        storage_changes: &InnerStorageChangeSet,
+        block_hash: H256,
+    ) -> H256 {
         let mut overlay = OverlayedChanges::default();
 
+        // now pallet starknet not use child storages.
         for (k, v) in storage_changes.changes.iter() {
             overlay.set_storage(k.to_vec(), v.clone());
         }
+        let trie_backend = self.substrate_backend.state_at(block_hash).unwrap();
 
-        let be = self.substrate_backend.state_at(block_info.best_hash).unwrap();
-
-        let root = overlay.storage_root(&be, &mut Default::default(), Default::default());
-        substrate_block.header.state_root = root;
-
-        operation.update_storage(storage_changes.changes, storage_changes.child_changes).unwrap();
-        operation.set_block_data(substrate_block.header, None, None, None, Best).unwrap();
-
-        self.substrate_backend.begin_state_operation(&mut operation, block_info.best_hash).unwrap();
-        self.substrate_backend.commit_operation(operation).unwrap();
+        overlay.storage_root(&trie_backend, &mut Default::default(), Default::default())
     }
 }
 
@@ -136,6 +139,7 @@ impl InnerStorageChangeSet {
 }
 
 impl Into<CommitmentStateDiff> for InnerStorageChangeSet {
+    // TODO replace by try_into.
     fn into(self) -> CommitmentStateDiff {
         let mut commitment_state_diff = CommitmentStateDiff {
             address_to_class_hash: Default::default(),
@@ -244,4 +248,12 @@ impl From<CommitmentStateDiff> for InnerStorageChangeSet {
 
 pub fn storage_key_build(prefix: Vec<u8>, key: &[u8]) -> Vec<u8> {
     [prefix, Identity::hash(key)].concat()
+}
+
+#[derive(Debug)]
+enum Error {
+    AlreadyInChain,
+    UnknownBlock,
+    ConstructTransaction(String),
+    CommitStorage(String),
 }

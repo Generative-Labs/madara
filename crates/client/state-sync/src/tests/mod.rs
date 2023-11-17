@@ -203,7 +203,7 @@ fn test_basic_state_diff() {
     assert_eq!(commitment_state_diff, commitment_state_diff2);
 
     let mut sync_worker = StateSyncWorker::new(client.clone(), backend);
-    sync_worker.apply_state_diff(2, commitment_state_diff2);
+    sync_worker.apply_state_diff(2, commitment_state_diff2).unwrap();
 
     // call contract
     let expected_erc20_address = ContractAddress(PatriciaKey(
@@ -212,10 +212,13 @@ fn test_basic_state_diff() {
 
     let block_info = client.info();
     let call_args = build_get_balance_contract_call(sender_account.0.0);
-    let res = client.runtime_api().call(block_info.best_hash, expected_erc20_address, call_args.0, call_args.1).unwrap().unwrap();
-    
+
     pretty_assertions::assert_eq!(
-        res,
+        client
+            .runtime_api()
+            .call(block_info.best_hash, expected_erc20_address, call_args.0, call_args.1)
+            .unwrap()
+            .unwrap(),
         vec![
             Felt252Wrapper::from_hex_be("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF").unwrap(),
             Felt252Wrapper::from_hex_be("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF").unwrap()

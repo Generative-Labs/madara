@@ -39,6 +39,8 @@ where
         .when(|_| true)
         .await?;
 
+        println!("===sync_from_l1_loop: {}", state_update.block_hash);
+
         tokio::time::sleep(poll_interval).await;
     }
 }

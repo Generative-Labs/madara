@@ -136,7 +136,7 @@ sc-block-builder = { git = "https://github.com/paritytech/substrate", branch = "
 sc-proposer-metrics = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.43" }
 sc-utils = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.43" }
 substrate-test-runtime-client = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.43" }
-
+substrate-test-client = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.43" }
 
 # Substrate build & tools dependencies
 substrate-build-script-utils = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.43" }

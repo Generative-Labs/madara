@@ -1,3 +1,7 @@
+mod ethereum;
 mod l1;
 mod retry;
-mod ethereum;
+pub mod sync;
+
+#[cfg(test)]
+mod tests;

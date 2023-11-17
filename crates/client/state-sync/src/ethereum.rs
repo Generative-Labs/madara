@@ -1,7 +1,9 @@
 use primitive_types::{H160, H256, U256};
 // use stark_hash::Felt;
-
-use starknet_api::{block::{BlockNumber, BlockHash}, hash::{StarkHash, StarkFelt}};
+use starknet_api::{
+    block::{BlockHash, BlockNumber},
+    hash::{StarkFelt, StarkHash},
+};
 
 /// Ethereum network chains running Starknet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,8 +19,7 @@ pub mod core_addr {
     pub const MAINNET: [u8; 20] = Decoder::Hex.decode(b"c662c410C0ECf747543f5bA90660f6ABeBD9C8c4");
     pub const TESTNET: [u8; 20] = Decoder::Hex.decode(b"de29d060D45901Fb19ED6C6e959EB22d8626708e");
     pub const TESTNET2: [u8; 20] = Decoder::Hex.decode(b"a4eD3aD27c294565cB0DCc993BDdCC75432D498c");
-    pub const INTEGRATION: [u8; 20] =
-        Decoder::Hex.decode(b"d5c325D183C592C94998000C5e0EED9e6655c020");
+    pub const INTEGRATION: [u8; 20] = Decoder::Hex.decode(b"d5c325D183C592C94998000C5e0EED9e6655c020");
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -44,16 +45,12 @@ const HTTP_OK: u16 = 200;
 
 impl EthereumClient {
     pub fn with_password(mut url: reqwest::Url, password: &str) -> anyhow::Result<Self> {
-        url.set_password(Some(password))
-            .map_err(|_| anyhow::anyhow!("Setting password failed"))?;
+        url.set_password(Some(password)).map_err(|_| anyhow::anyhow!("Setting password failed"))?;
         Self::new(url)
     }
 
     pub fn new(url: reqwest::Url) -> anyhow::Result<Self> {
-        Ok(Self {
-            http: reqwest::ClientBuilder::new().build()?,
-            url,
-        })
+        Ok(Self { http: reqwest::ClientBuilder::new().build()?, url })
     }
 
     async fn get_finalized_block_hash(&self) -> anyhow::Result<H256> {
@@ -109,8 +106,7 @@ impl EthereumClient {
 }
 
 #[async_trait::async_trait]
-impl  EthereumApi for EthereumClient {
-
+impl EthereumApi for EthereumClient {
     async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate> {
         let hash = self.get_finalized_block_hash().await?;
         let hash = format!("0x{}", hex::encode(hash.as_bytes()));
@@ -162,25 +158,16 @@ fn encode_ethereum_call_data(signature: &[u8]) -> String {
 
 fn get_h256(value: &serde_json::Value) -> anyhow::Result<H256> {
     use std::str::FromStr;
-    value
-        .as_str()
-        .map(lpad64)
-        .and_then(|val| H256::from_str(&val).ok())
-        .ok_or(anyhow::anyhow!("Failed to fetch H256"))
+    value.as_str().map(lpad64).and_then(|val| H256::from_str(&val).ok()).ok_or(anyhow::anyhow!("Failed to fetch H256"))
 }
 
 fn get_u256(value: &serde_json::Value) -> anyhow::Result<U256> {
     use std::str::FromStr;
-    value
-        .as_str()
-        .map(lpad64)
-        .and_then(|val| U256::from_str(&val).ok())
-        .ok_or(anyhow::anyhow!("Failed to fetch U256"))
+    value.as_str().map(lpad64).and_then(|val| U256::from_str(&val).ok()).ok_or(anyhow::anyhow!("Failed to fetch U256"))
 }
 
 fn get_felt(value: H256) -> anyhow::Result<StarkHash> {
-    // TODO 这样编码方式是否正确？？原来使用的是小端编码？？
-    let felt = StarkFelt::new(*value.as_fixed_bytes())?; 
+    let felt = StarkFelt::new(*value.as_fixed_bytes())?;
     Ok(felt)
 }
 
@@ -192,21 +179,18 @@ fn get_number(value: U256) -> anyhow::Result<BlockNumber> {
 fn lpad64(value: &str) -> String {
     let input = value.strip_prefix("0x").unwrap_or(value);
     let prefix = if value.starts_with("0x") { "0x" } else { "" };
-    if input.len() == 64 {
-        format!("{prefix}{input}")
-    } else {
-        format!("{prefix}{input:0>64}")
-    }
+    if input.len() == 64 { format!("{prefix}{input}") } else { format!("{prefix}{input:0>64}") }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::str::FromStr;
 
     use httpmock::prelude::*;
     use primitive_types::H160;
     use reqwest::Url;
-    use std::str::FromStr;
+
+    use super::*;
 
     #[tokio::test]
     #[ignore = "live ethereum call"]
@@ -296,11 +280,9 @@ mod tests {
         let eth = EthereumClient::new(url)?;
 
         let block_number = U256::from_str_radix("0x7eeb", 16)?;
-        let block_hash =
-            H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")?;
-        let global_root =
-            H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")?;
-            
+        let block_hash = H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")?;
+        let global_root = H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")?;
+
         let expected = EthereumStateUpdate {
             state_root: Default::default(),
             block_number: get_number(block_number)?,
@@ -320,15 +302,10 @@ mod tests {
 
     #[test]
     fn test_h256() {
-        assert!(H256::from_str(
-            "0x0000000000000000000000000000000000000000000000000000000000007eeb"
-        )
-        .is_ok());
+        assert!(H256::from_str("0x0000000000000000000000000000000000000000000000000000000000007eeb").is_ok());
         assert!(H256::from_str("0x7eeb").is_err());
 
-        let expected =
-            H256::from_str("0x0000000000000000000000000000000000000000000000000000000000007eeb")
-                .unwrap();
+        let expected = H256::from_str("0x0000000000000000000000000000000000000000000000000000000000007eeb").unwrap();
         assert_eq!(H256::from_str(&lpad64("0x7eeb")).unwrap(), expected);
     }
 
@@ -343,22 +320,10 @@ mod tests {
                 "0000000000000000000000000000000000000000000000000000000000007eeb",
                 "0000000000000000000000000000000000000000000000000000000000007eeb",
             ),
-            (
-                "7eeb",
-                "0000000000000000000000000000000000000000000000000000000000007eeb",
-            ),
-            (
-                "0x7eeb",
-                "0x0000000000000000000000000000000000000000000000000000000000007eeb",
-            ),
-            (
-                "",
-                "0000000000000000000000000000000000000000000000000000000000000000",
-            ),
-            (
-                "0x",
-                "0x0000000000000000000000000000000000000000000000000000000000000000",
-            ),
+            ("7eeb", "0000000000000000000000000000000000000000000000000000000000007eeb"),
+            ("0x7eeb", "0x0000000000000000000000000000000000000000000000000000000000007eeb"),
+            ("", "0000000000000000000000000000000000000000000000000000000000000000"),
+            ("0x", "0x0000000000000000000000000000000000000000000000000000000000000000"),
         ] {
             assert_eq!(lpad64(input), expected, "for input: {}", input);
         }

@@ -1,11 +1,11 @@
 //! A general utility for retrying futures with a configurable backoff and error filter.
-use std::{
-    future::Future,
-    num::{NonZeroU64, NonZeroUsize},
-    result::Result,
-    time::Duration,
-};
-use tokio_retry::{strategy::ExponentialBackoff, Retry as TokioRetry, RetryIf as TokioRetryIf};
+use std::future::Future;
+use std::num::{NonZeroU64, NonZeroUsize};
+use std::result::Result;
+use std::time::Duration;
+
+use tokio_retry::strategy::ExponentialBackoff;
+use tokio_retry::{Retry as TokioRetry, RetryIf as TokioRetryIf};
 
 pub struct Retry<T, E, Fut, FutureFactory>
 where
@@ -69,12 +69,7 @@ where
     where
         RetryCondition: FnMut(&E) -> bool,
     {
-        TokioRetryIf::spawn(
-            MaybeLimited::from(self.strategy),
-            self.future_factory,
-            retry_condition,
-        )
-        .await
+        TokioRetryIf::spawn(MaybeLimited::from(self.strategy), self.future_factory, retry_condition).await
     }
 }
 
@@ -111,16 +106,10 @@ impl From<Strategy> for MaybeLimited {
         #[cfg(not(test))]
         const FACTOR: u32 = 1000;
 
-        let backoff = ExponentialBackoff::from_millis(s.base_secs.get()).factor(
-            s.factor
-                .get()
-                .checked_mul(FACTOR as u64)
-                .unwrap_or(u64::MAX),
-        );
+        let backoff = ExponentialBackoff::from_millis(s.base_secs.get())
+            .factor(s.factor.get().checked_mul(FACTOR as u64).unwrap_or(u64::MAX));
         let backoff = match s.max_delay {
-            Some(max_delay) => {
-                backoff.max_delay(max_delay.checked_mul(FACTOR).unwrap_or(Duration::MAX))
-            }
+            Some(max_delay) => backoff.max_delay(max_delay.checked_mul(FACTOR).unwrap_or(Duration::MAX)),
             None => backoff,
         };
 
@@ -133,14 +122,13 @@ impl From<Strategy> for MaybeLimited {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::iter::{IntoIterator, Iterator};
+    use std::num::{NonZeroU64, NonZeroUsize};
+    use std::result::Result;
+    use std::time::{Duration, Instant};
+
     use super::Retry;
-    use std::{
-        cell::RefCell,
-        iter::{IntoIterator, Iterator},
-        num::{NonZeroU64, NonZeroUsize},
-        result::Result,
-        time::{Duration, Instant},
-    };
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     enum Failure {
@@ -188,11 +176,7 @@ mod tests {
 
         pub fn expect_last_delay(&self, expected: u64) -> Result<u64, u64> {
             let real = self.last.borrow().as_millis() as u64;
-            if real > expected - expected / 8 && real < expected + expected / 8 {
-                Ok(real)
-            } else {
-                Err(real)
-            }
+            if real > expected - expected / 8 && real < expected + expected / 8 { Ok(real) } else { Err(real) }
         }
     }
 
@@ -201,12 +185,7 @@ mod tests {
 
         #[tokio::test]
         async fn until_ok() {
-            let uut = Uut::new([
-                Err(Failure::Retryable),
-                Err(Failure::Fatal),
-                Err(Failure::Fatal),
-                Ok(Success),
-            ]);
+            let uut = Uut::new([Err(Failure::Retryable), Err(Failure::Fatal), Err(Failure::Fatal), Ok(Success)]);
             Retry::exponential(|| uut.do_work(), NonZeroU64::new(2).unwrap())
                 .factor(NonZeroU64::new(10).unwrap())
                 .on_any_err()

@@ -20,6 +20,7 @@ use sp_state_machine::{OverlayedChanges, StorageKey, StorageValue};
 use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonce, PatriciaKey};
 use starknet_api::hash::StarkFelt;
 use starknet_api::state::StorageKey as StarknetStorageKey;
+
 pub struct StateSyncWorker<B, C, BE> {
     client: Arc<C>,
     substrate_backend: Arc<BE>,

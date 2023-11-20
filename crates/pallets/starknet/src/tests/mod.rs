@@ -215,8 +215,6 @@ pub fn set_infinite_tokens<T: Config>(contract_address: &ContractAddress) {
     let fee_token_address = Starknet::fee_token_address();
     let (low_key, high_key) = get_erc20_balance_var_addresses(contract_address).unwrap();
 
-    println!("{:#?} {:#?} {:#?}", contract_address, low_key, high_key);
-
     let mut state_adapter = BlockifierStateAdapter::<T>::default();
 
     state_adapter.set_storage_at(fee_token_address, low_key, StarkFelt::from(u64::MAX as u128));

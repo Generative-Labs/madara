@@ -20,6 +20,7 @@ serde_json = { workspace = true, features = [
 hex = { workspace = true }
 tracing = { workspace = true }
 indexmap = { workspace = true }
+hashbrown = { workspace = true }
 
 # Madara
 mp-hashers = { workspace = true, default-features = true }
@@ -58,6 +59,7 @@ pretty_assertions = { workspace = true }
 sc-block-builder = { workspace = true }
 sp-inherents = { workspace = true }
 sp-timestamp = { workspace = true }
+sp-block-builder = { workspace = true }
 substrate-test-client = { workspace = true }
 
 # Starknet

@@ -563,7 +563,12 @@ pub mod pallet {
                     false,
                     T::DisableNonceValidation::get(),
                 )
-                .map_err(|_| Error::<T>::TransactionExecutionFailed)?;
+                .map_err(|e| {
+                    sp_std::if_std! {
+                        println!("{:#?}", e)
+                    }
+                    Error::<T>::TransactionExecutionFailed
+                })?;
 
             let tx_hash = transaction.tx_hash();
             Self::emit_and_store_tx_and_fees_events(
@@ -614,7 +619,9 @@ pub mod pallet {
                     T::DisableNonceValidation::get(),
                 )
                 .map_err(|e| {
-                    log::error!("failed to deploy accout: {:?}", e);
+                    sp_std::if_std! {
+                        println!("{:#?}", e);
+                    }
                     Error::<T>::TransactionExecutionFailed
                 })?;
 

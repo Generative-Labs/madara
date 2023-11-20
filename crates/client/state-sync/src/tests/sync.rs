@@ -1,6 +1,8 @@
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use blockifier::state::cached_state::CommitmentStateDiff;
+use blockifier::execution::contract_class::ContractClass;
 use frame_support::assert_ok;
 use futures::executor::block_on;
 pub use madara_runtime as runtime;
@@ -8,16 +10,17 @@ pub use madara_runtime::{
     BuildStorage, GenesisConfig, RuntimeCall, SealingMode, SystemConfig, UncheckedExtrinsic, WASM_BINARY,
 };
 use mp_felt::Felt252Wrapper;
-use mp_transactions::InvokeTransactionV1;
-use pallet_starknet::genesis_loader::{GenesisData, GenesisLoader};
+use mp_transactions::{DeclareTransactionV1, DeployAccountTransaction, InvokeTransactionV1};
+use pallet_starknet::genesis_loader::{read_contract_class_from_json, GenesisData, GenesisLoader};
 use pallet_starknet::runtime_api::StarknetRuntimeApi;
 use pallet_starknet::Call as StarknetCall;
-use sc_block_builder::{BlockBuilderProvider, RecordProof};
+use sc_block_builder::{BlockBuilder, BlockBuilderProvider, RecordProof};
 use sc_client_api::ExecutionStrategy::NativeElseWasm;
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
 use sp_inherents::InherentData;
+use sp_runtime::traits::Block as BlockT;
 use sp_state_machine::BasicExternalities;
 use sp_timestamp::{Timestamp, INHERENT_IDENTIFIER};
 use starknet_api::api_core::{ContractAddress, EntryPointSelector, PatriciaKey};
@@ -26,10 +29,11 @@ use starknet_api::transaction::Calldata;
 use substrate_test_client::*;
 
 use crate::sync::*;
-use crate::tests::helpers::*;
 use crate::tests::constants::*;
+use crate::tests::helpers::*;
 
 pub type Backend = sc_client_db::Backend<runtime::Block>;
+
 pub struct MadaraExecutorDispatch;
 impl sc_executor::NativeExecutionDispatch for MadaraExecutorDispatch {
     /// Only enable the benchmarking host functions when we actually want to benchmark.
@@ -133,14 +137,52 @@ pub fn create_test_client() -> (Client, Arc<Backend>) {
     (client, backend)
 }
 
+fn build_get_balance_contract_call(account_address: StarkFelt) -> (EntryPointSelector, Calldata) {
+    let balance_of_selector = EntryPointSelector(
+        StarkFelt::try_from("0x02e4263afad30923c891518314c3c95dbe830a16874e8abc5777a9a20b54c76e").unwrap(),
+    );
+    let calldata = Calldata(Arc::new(vec![
+        account_address, // owner address
+    ]));
+
+    (balance_of_selector, calldata)
+}
+
+fn apply_inherents_for_block_builder<'a, Block: BlockT, C, BE>(
+    block_builder: &mut BlockBuilder<'a, Block, C, BE>,
+    block_info: &sp_blockchain::Info<madara_runtime::Block>,
+) where
+    BE: sc_client_api::backend::Backend<Block> + Send + Sync + 'static,
+    C: BlockBuilderProvider<BE, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
+    C::Api: sp_api::ApiExt<Block, StateBackend = sc_client_api::backend::StateBackendFor<BE, Block>>
+        + sc_block_builder::BlockBuilderApi<Block>,
+{
+    let mut inherents = InherentData::new();
+    inherents
+        .put_data(INHERENT_IDENTIFIER, &Timestamp::new(6000u64 * (block_info.best_number as u64 + 1) + 2))
+        .unwrap();
+
+    let inherents_exs = block_builder.create_inherents(inherents).unwrap();
+    for ex in inherents_exs {
+        block_builder.push(ex).unwrap();
+    }
+}
+
+pub fn get_contract_class(resource_path: &str, version: u8) -> ContractClass {
+    let cargo_dir = String::from(env!("CARGO_MANIFEST_DIR"));
+    let build_path = match version {
+        0 => "/../../../cairo-contracts/build/",
+        1 => "/../../../cairo-contracts/build/cairo_1/",
+        _ => unimplemented!("Unsupported version {} to get contract class", version),
+    };
+    let full_path = cargo_dir + build_path + resource_path;
+    let full_path: PathBuf = [full_path].iter().collect();
+    let raw_contract_class = fs::read_to_string(full_path).unwrap();
+    read_contract_class_from_json(&raw_contract_class, version)
+}
+
 #[test]
-fn test_basic_state_diff() {
-    // 1. make block (transfer, deploy)
-    // 2. client new block builder
-    // 3. block builder build block, get {block, state changes, applied state root}
-    // 4. get state diff from state changes
-    // 4. apply state diff to backend.
-    // 5. check starknet contract state by runtime api
+fn test_apply_deploy_contract_state_diff() {
     let (client, backend) = create_test_client();
     let client = Arc::new(client);
 
@@ -169,40 +211,32 @@ fn test_basic_state_diff() {
         ],
     };
 
+    let block_info = client.info();
+    let mut builder = client.new_block_at(block_info.best_hash, Default::default(), RecordProof::Yes).unwrap();
+
+    apply_inherents_for_block_builder(&mut builder, &block_info);
+
     let call: RuntimeCall =
         StarknetCall::invoke { transaction: mp_transactions::InvokeTransaction::V1(deploy_transaction) }.into();
     let ext = UncheckedExtrinsic { signature: None, function: call };
-
-    let block_info = client.info();
-
-    let mut builder = client.new_block_at(block_info.best_hash, Default::default(), RecordProof::Yes).unwrap();
-    let mut inherents = InherentData::new();
-    inherents
-        .put_data(INHERENT_IDENTIFIER, &Timestamp::new(6000u64 * (block_info.best_number as u64 + 1) + 2))
-        .unwrap();
-
-    let inherents_exs = builder.create_inherents(inherents).unwrap();
-    for ex in inherents_exs {
-        builder.push(ex).unwrap();
-    }
     builder.push(ext).unwrap();
 
+    // build a block, get storage changes after deploy contract.
     let block = builder.build().unwrap();
     let ics = InnerStorageChangeSet {
         changes: block.storage_changes.main_storage_changes.clone(),
         child_changes: block.storage_changes.child_storage_changes.clone(),
     };
 
-    let commitment_state_diff: CommitmentStateDiff = ics.into();
-    let ics2 = InnerStorageChangeSet::from(commitment_state_diff.clone());
-    let commitment_state_diff2: CommitmentStateDiff = ics2.into();
+    let inner_state_diff: SyncStateDiff = ics.into();
+    let ics2 = InnerStorageChangeSet::from(inner_state_diff.clone());
+    let inner_state_diff2: SyncStateDiff = ics2.into();
 
-    assert_eq!(commitment_state_diff, commitment_state_diff2);
-
+    assert_eq!(inner_state_diff, inner_state_diff2);
+    // apply storage diff by StateSyncWorker
     let mut sync_worker = StateSyncWorker::new(client.clone(), backend);
-    sync_worker.apply_state_diff(2, commitment_state_diff2).unwrap();
+    sync_worker.apply_state_diff(2, inner_state_diff2).unwrap();
 
-    // call contract
     let expected_erc20_address = ContractAddress(PatriciaKey(
         StarkFelt::try_from("00dc58c1280862c95964106ef9eba5d9ed8c0c16d05883093e4540f22b829dff").unwrap(),
     ));
@@ -210,6 +244,7 @@ fn test_basic_state_diff() {
     let block_info = client.info();
     let call_args = build_get_balance_contract_call(sender_account.0.0);
 
+    // call the deployed contract,
     pretty_assertions::assert_eq!(
         client
             .runtime_api()
@@ -223,13 +258,106 @@ fn test_basic_state_diff() {
     );
 }
 
-pub fn build_get_balance_contract_call(account_address: StarkFelt) -> (EntryPointSelector, Calldata) {
-    let balance_of_selector = EntryPointSelector(
-        StarkFelt::try_from("0x02e4263afad30923c891518314c3c95dbe830a16874e8abc5777a9a20b54c76e").unwrap(),
-    );
-    let calldata = Calldata(Arc::new(vec![
-        account_address, // owner address
-    ]));
+#[test]
+fn test_apply_declare_contract_state_diff() {
+    let account_addr = get_account_address(None, AccountType::V0(AccountTypeV0Inner::NoValidate));
 
-    (balance_of_selector, calldata)
+    let erc20_class = get_contract_class("ERC20.json", 0);
+    let erc20_class_hash =
+        Felt252Wrapper::from_hex_be("0x057eca87f4b19852cfd4551cf4706ababc6251a8781733a0a11cf8e94211da95").unwrap();
+
+    let transaction = DeclareTransactionV1 {
+        sender_address: account_addr.into(),
+        class_hash: erc20_class_hash,
+        nonce: Felt252Wrapper::ZERO,
+        max_fee: u128::MAX,
+        signature: vec![],
+    };
+
+    let (client, backend) = create_test_client();
+    let client = Arc::new(client);
+
+    let block_info = client.info();
+    let mut builder = client.new_block_at(block_info.best_hash, Default::default(), RecordProof::Yes).unwrap();
+    apply_inherents_for_block_builder(&mut builder, &block_info);
+
+    let call: RuntimeCall = StarknetCall::declare {
+        transaction: mp_transactions::DeclareTransaction::V1(transaction),
+        contract_class: erc20_class.clone(),
+    }
+    .into();
+
+    let ext = UncheckedExtrinsic { signature: None, function: call };
+    builder.push(ext.clone()).unwrap();
+
+    let block = builder.build().unwrap();
+    let ics = InnerStorageChangeSet {
+        changes: block.storage_changes.main_storage_changes.clone(),
+        child_changes: block.storage_changes.child_storage_changes.clone(),
+    };
+
+    let state_diff: SyncStateDiff = ics.into();
+    let ics2 = InnerStorageChangeSet::from(state_diff.clone());
+    let state_diff2: SyncStateDiff = ics2.into();
+
+    assert_eq!(state_diff, state_diff2);
+
+    // apply storage diff by StateSyncWorker
+    let mut sync_worker = StateSyncWorker::new(client.clone(), backend);
+    sync_worker.apply_state_diff(2, state_diff2).unwrap();
+
+    let block_info = client.info();
+    let declared_contract = client
+        .runtime_api()
+        .contract_class_by_class_hash(block_info.best_hash, erc20_class_hash.into())
+        .unwrap()
+        .unwrap();
+    assert_eq!(erc20_class, declared_contract);
+}
+
+#[test]
+fn test_apply_deploy_account_state_diff() {
+    let (client, backend) = create_test_client();
+    let client = Arc::new(client);
+    let block_info = client.info();
+    let mut builder = client.new_block_at(block_info.best_hash, Default::default(), RecordProof::Yes).unwrap();
+    apply_inherents_for_block_builder(&mut builder, &block_info);
+
+    let (account_class_hash, calldata) = account_helper(AccountType::V0(AccountTypeV0Inner::NoValidate));
+    let deploy_tx = DeployAccountTransaction {
+        max_fee: u128::MAX,
+        signature: vec![],
+        nonce: Felt252Wrapper::ZERO,
+        contract_address_salt: *SALT,
+        constructor_calldata: calldata.0.iter().map(|e| Felt252Wrapper::from(*e)).collect(),
+        class_hash: account_class_hash.into(),
+    };
+
+    // The balance of this deploy account is write in genesis.
+    let address: ContractAddress = deploy_tx.account_address().into();
+    let call: RuntimeCall = StarknetCall::deploy_account { transaction: deploy_tx }.into();
+    let ext = UncheckedExtrinsic { signature: None, function: call };
+    builder.push(ext.clone()).unwrap();
+
+    let block = builder.build().unwrap();
+    let ics = InnerStorageChangeSet {
+        changes: block.storage_changes.main_storage_changes.clone(),
+        child_changes: block.storage_changes.child_storage_changes.clone(),
+    };
+
+    let state_diff: SyncStateDiff = ics.into();
+    let ics2 = InnerStorageChangeSet::from(state_diff.clone());
+    let state_diff2: SyncStateDiff = ics2.into();
+
+    assert_eq!(state_diff, state_diff2);
+
+    // apply storage diff by StateSyncWorker
+    let mut sync_worker = StateSyncWorker::new(client.clone(), backend);
+    sync_worker.apply_state_diff(2, state_diff2).unwrap();
+
+    let block_info = client.info();
+    let deployed_account_class_hash =
+        client.runtime_api().contract_class_hash_by_address(block_info.best_hash, address.into()).unwrap();
+
+    assert_eq!(deployed_account_class_hash, account_class_hash);
 }

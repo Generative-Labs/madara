@@ -17,6 +17,7 @@ use pallet_starknet::Call as StarknetCall;
 use sc_block_builder::{BlockBuilder, BlockBuilderProvider, RecordProof};
 use sc_client_api::ExecutionStrategy::NativeElseWasm;
 use sc_client_api::HeaderBackend;
+use sc_client_db::DatabaseSource;
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
 use sp_inherents::InherentData;
@@ -27,6 +28,7 @@ use starknet_api::api_core::{ContractAddress, EntryPointSelector, PatriciaKey};
 use starknet_api::hash::StarkFelt;
 use starknet_api::transaction::Calldata;
 use substrate_test_client::*;
+use tempfile::tempdir;
 
 use crate::sync::*;
 use crate::tests::constants::*;
@@ -234,7 +236,8 @@ fn test_apply_deploy_contract_state_diff() {
 
     assert_eq!(inner_state_diff, inner_state_diff2);
     // apply storage diff by StateSyncWorker
-    let mut sync_worker = StateSyncWorker::new(client.clone(), backend);
+    let madara_db = create_temp_madara_backend();
+    let mut sync_worker = StateSyncWorker::new(client.clone(), backend, madara_db);
     sync_worker.apply_state_diff(2, inner_state_diff2).unwrap();
 
     let expected_erc20_address = ContractAddress(PatriciaKey(
@@ -303,7 +306,8 @@ fn test_apply_declare_contract_state_diff() {
     assert_eq!(state_diff, state_diff2);
 
     // apply storage diff by StateSyncWorker
-    let mut sync_worker = StateSyncWorker::new(client.clone(), backend);
+    let madara_db = create_temp_madara_backend();
+    let mut sync_worker = StateSyncWorker::new(client.clone(), backend, madara_db);
     sync_worker.apply_state_diff(2, state_diff2).unwrap();
 
     let block_info = client.info();
@@ -352,7 +356,8 @@ fn test_apply_deploy_account_state_diff() {
     assert_eq!(state_diff, state_diff2);
 
     // apply storage diff by StateSyncWorker
-    let mut sync_worker = StateSyncWorker::new(client.clone(), backend);
+    let madara_db = create_temp_madara_backend();
+    let mut sync_worker = StateSyncWorker::new(client.clone(), backend, madara_db);
     sync_worker.apply_state_diff(2, state_diff2).unwrap();
 
     let block_info = client.info();
@@ -360,4 +365,16 @@ fn test_apply_deploy_account_state_diff() {
         client.runtime_api().contract_class_hash_by_address(block_info.best_hash, address.into()).unwrap();
 
     assert_eq!(deployed_account_class_hash, account_class_hash);
+}
+
+fn create_temp_madara_backend() -> Arc<mc_db::Backend<runtime::Block>> {
+    let temp_dir = tempdir().unwrap();
+    let temp_dir_path = temp_dir.path();
+    let madara_db = mc_db::Backend::<runtime::Block>::open(
+        &DatabaseSource::RocksDb { path: temp_dir_path.to_path_buf(), cache_size: 1024 },
+        temp_dir_path,
+        false,
+    )
+    .unwrap();
+    Arc::new(madara_db)
 }

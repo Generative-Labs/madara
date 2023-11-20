@@ -8,6 +8,7 @@ use frame_support::{Identity, StorageHasher};
 use hashbrown::hash_map::DefaultHashBuilder as HasherBuilder;
 use indexmap::IndexMap;
 use madara_runtime::{Block as SubstrateBlock, Header as SubstrateHeader};
+use mc_db::MappingCommitment;
 use mc_rpc_core::utils::get_block_by_block_hash;
 use mp_block::{Block, Header};
 use mp_digest_log::MADARA_ENGINE_ID;
@@ -21,15 +22,16 @@ use sc_client_api::backend::{Backend, BlockImportOperation};
 use sp_blockchain::{HeaderBackend, Info};
 use sp_core::{Decode, Encode, H256};
 use sp_runtime::generic::{Digest, DigestItem, Header as GenericHeader};
-use sp_runtime::traits::BlakeTwo256;
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
 use sp_state_machine::{OverlayedChanges, StorageKey, StorageValue};
 use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonce, PatriciaKey};
 use starknet_api::hash::StarkFelt;
 use starknet_api::state::StorageKey as StarknetStorageKey;
 
-pub struct StateSyncWorker<B, C, BE> {
+pub struct StateSyncWorker<B: sp_api::BlockT, C, BE> {
     client: Arc<C>,
     substrate_backend: Arc<BE>,
+    madara_backend: Arc<mc_db::Backend<B>>,
     phantom_data: PhantomData<B>,
 }
 
@@ -39,8 +41,8 @@ where
     C: HeaderBackend<B>,
     BE: Backend<B>,
 {
-    pub fn new(client: Arc<C>, substrate_backend: Arc<BE>) -> Self {
-        Self { client, substrate_backend, phantom_data: PhantomData }
+    pub fn new(client: Arc<C>, substrate_backend: Arc<BE>, madara_backend: Arc<mc_db::Backend<B>>) -> Self {
+        Self { client, substrate_backend, madara_backend, phantom_data: PhantomData }
     }
 
     // Apply the state difference to the data layer.
@@ -48,6 +50,7 @@ where
         let block_info = self.client.info();
 
         let starknet_block = self.create_starknet_block(&block_info, starknet_block_number as u32)?;
+        let starknet_block_hash = starknet_block.header().hash::<PedersenHasher>().into();
         let digest = DigestItem::Consensus(MADARA_ENGINE_ID, mp_digest_log::Log::Block(starknet_block).encode());
 
         let mut substrate_block = SubstrateBlock {
@@ -67,6 +70,7 @@ where
         substrate_block.header.state_root =
             self.calculate_state_root_after_storage_change(&storage_changes, block_info.best_hash);
 
+        let substrate_block_hash = substrate_block.hash();
         let mut operation = self
             .substrate_backend
             .begin_operation()
@@ -83,7 +87,14 @@ where
 
         self.substrate_backend.commit_operation(operation).map_err(|e| Error::CommitStorage(e.to_string()))?;
 
-        Ok(())
+        self.madara_backend
+            .mapping()
+            .write_hashes(MappingCommitment {
+                block_hash: substrate_block_hash,
+                starknet_block_hash,
+                starknet_transaction_hashes: Vec::new(),
+            })
+            .map_err(|e| Error::Other(e.to_string()))
     }
 
     fn create_starknet_block(&self, block_chain_info: &Info<B>, block_number: u32) -> Result<Block, Error> {
@@ -280,4 +291,5 @@ pub enum Error {
     UnknownBlock,
     ConstructTransaction(String),
     CommitStorage(String),
+    Other(String),
 }

@@ -48,7 +48,7 @@ where
     }
 
     // Apply the state difference to the data layer.
-    pub fn apply_state_diff(&mut self, starknet_block_number: u64, state_diff: SyncStateDiff) -> Result<(), Error> {
+    pub fn apply_state_diff(&self, starknet_block_number: u64, state_diff: SyncStateDiff) -> Result<(), Error> {
         let block_info = self.client.info();
 
         let starknet_block = self.create_starknet_block(&block_info, starknet_block_number as u32)?;

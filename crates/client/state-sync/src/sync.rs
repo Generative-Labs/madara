@@ -28,6 +28,8 @@ use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonc
 use starknet_api::hash::StarkFelt;
 use starknet_api::state::StorageKey as StarknetStorageKey;
 
+use crate::Error;
+
 pub struct StateSyncWorker<B: sp_api::BlockT, C, BE> {
     client: Arc<C>,
     substrate_backend: Arc<BE>,
@@ -283,13 +285,4 @@ impl From<SyncStateDiff> for InnerStorageChangeSet {
 
         InnerStorageChangeSet { changes, child_changes: _child_changes }
     }
-}
-
-#[derive(Debug)]
-pub enum Error {
-    AlreadyInChain,
-    UnknownBlock,
-    ConstructTransaction(String),
-    CommitStorage(String),
-    Other(String),
 }

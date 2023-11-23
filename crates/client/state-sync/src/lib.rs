@@ -1,56 +1,58 @@
 mod ethereum;
-mod ethereum_1;
-mod l1;
-mod retry;
 mod sync;
 
 #[cfg(test)]
 mod tests;
 
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use ethers::types::U256;
-use futures::Future;
+use futures::prelude::*;
+use futures::channel::mpsc;
 use mc_db::L1L2BlockMapping;
-use sp_runtime::traits::Block as BlockT;
+use sc_client_api::backend::Backend;
+use sp_blockchain::HeaderBackend;
+use sp_core::H256;
+use sp_runtime::generic::Header as GenericHeader;
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
+use sync::StateWriter;
 
 type EncodeStateDiff = Vec<U256>;
 
-pub(crate) struct FetchState {
+#[derive(Debug, Clone)]
+pub struct FetchState {
     pub block_info: L1L2BlockMapping,
     pub encode_state_diff: EncodeStateDiff,
 }
 
 // BaseLayer
 #[async_trait]
-pub(crate) trait StateFetcher {
-    async fn fetch_state_diff(
-        &self,
-        from_l1_block: u64,
-        to_l1_block: u64,
-        l2_start_block: u64,
-    ) -> Result<Vec<FetchState>, Error>;
+pub trait StateFetcher {
+    async fn fetch_state_diff(&self, from_l1_block: u64, l2_start_block: u64) -> Result<Vec<FetchState>, Error>;
 }
 
-pub struct SyncWorker<B: BlockT> {
+pub async fn run<B, C, BE>(
     state_fetcher: Box<dyn StateFetcher>,
     madara_backend: Arc<mc_db::Backend<B>>,
-}
+    substrate_client: Arc<C>,
+    substrate_backend: Arc<BE>,
+) -> Result<impl Future<Output = ()> + Send, Error>
+where
+    B: BlockT<Hash = H256, Header = GenericHeader<u32, BlakeTwo256>>,
+    C: HeaderBackend<B>,
+    BE: Backend<B>,
+{
+    let (tx, rx) = mpsc::unbounded::<FetchState>();
+    let state_writer = StateWriter::new(substrate_client, substrate_backend, madara_backend);
 
-impl<B: BlockT> Future for SyncWorker<B> {
-    type Output = ();
+    let fetcher_task = async {};
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        loop {
-            if let Ok(_last_l1_l2_mapping) = self.madara_backend.meta().last_l1_l2_mapping() {
-                let _ = Pin::new(&mut self.state_fetcher.fetch_state_diff(10, 111, 1)).poll(cx);
-            }
-        }
-        Poll::Ready(())
-    }
+    let state_write_task = async {};
+
+    let task = future::join(fetcher_task, state_write_task).map(|_| ()).boxed();
+
+    Ok(task)
 }
 
 #[derive(Debug)]

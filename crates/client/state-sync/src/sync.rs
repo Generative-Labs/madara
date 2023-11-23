@@ -30,16 +30,16 @@ use starknet_api::state::StorageKey as StarknetStorageKey;
 
 use crate::Error;
 
-pub struct StateSyncWorker<B: sp_api::BlockT, C, BE> {
+pub struct StateWriter<B: BlockT, C, BE> {
     client: Arc<C>,
     substrate_backend: Arc<BE>,
     madara_backend: Arc<mc_db::Backend<B>>,
     phantom_data: PhantomData<B>,
 }
 
-impl<B, C, BE> StateSyncWorker<B, C, BE>
+impl<B, C, BE> StateWriter<B, C, BE>
 where
-    B: sp_api::BlockT<Hash = H256, Header = GenericHeader<u32, BlakeTwo256>>,
+    B: BlockT<Hash = H256, Header = GenericHeader<u32, BlakeTwo256>>,
     C: HeaderBackend<B>,
     BE: Backend<B>,
 {

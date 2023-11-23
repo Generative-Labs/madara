@@ -1,331 +1,247 @@
-use primitive_types::{H160, H256, U256};
-// use stark_hash::Felt;
-use starknet_api::{
-    block::{BlockHash, BlockNumber},
-    hash::{StarkFelt, StarkHash},
-};
+use ethers::abi::RawLog;
+use ethers::contract::{BaseContract, EthEvent, EthLogDecode};
+use ethers::core::abi::parse_abi;
+use ethers::providers::{Http, Middleware, Provider};
+use ethers::types::{Address, Bytes, Filter, Log, Topic, H160, H256, I256, U256};
+use starknet_api::block::{BlockHash, BlockNumber};
+use starknet_api::hash::{StarkFelt, StarkHash};
 
-/// Ethereum network chains running Starknet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EthereumChain {
-    Mainnet,
-    Goerli,
-    Other(primitive_types::U256),
+use crate::Error;
+
+pub struct EthereumClient1 {
+    http_provider: Provider<Http>,
+
+    core_contract: Address,
+
+    verifier_contract: Address,
+
+    memory_page_contract: Address,
 }
 
-pub mod core_addr {
-    use const_decoder::Decoder;
-
-    pub const MAINNET: [u8; 20] = Decoder::Hex.decode(b"c662c410C0ECf747543f5bA90660f6ABeBD9C8c4");
-    pub const TESTNET: [u8; 20] = Decoder::Hex.decode(b"de29d060D45901Fb19ED6C6e959EB22d8626708e");
-    pub const TESTNET2: [u8; 20] = Decoder::Hex.decode(b"a4eD3aD27c294565cB0DCc993BDdCC75432D498c");
-    pub const INTEGRATION: [u8; 20] = Decoder::Hex.decode(b"d5c325D183C592C94998000C5e0EED9e6655c020");
+#[derive(Clone, Debug, PartialEq, Eq, EthEvent)]
+#[ethevent(name = "LogStateUpdate")]
+pub struct LogStateUpdate {
+    pub global_root: U256,
+    pub block_number: I256,
+    pub block_hash: U256,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct EthereumStateUpdate {
-    pub state_root: StarkHash,
-    pub block_number: BlockNumber,
-    pub block_hash: BlockHash,
+#[derive(Clone, Debug, PartialEq, Eq, EthEvent)]
+#[ethevent(name = "LogStateTransitionFact")]
+pub struct LogStateTransitionFact {
+    pub state_transition_fact: [u8; 32],
 }
 
-#[async_trait::async_trait]
-pub trait EthereumApi {
-    async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate>;
-    async fn get_chain(&self) -> anyhow::Result<EthereumChain>;
+#[derive(Clone, Debug, PartialEq, Eq, EthEvent)]
+#[ethevent(name = "LogMemoryPagesHashes")]
+pub struct LogMemoryPagesHashes {
+    pub fact: [u8; 32],
+    pub pages_hashes: Vec<[u8; 32]>,
 }
 
-#[derive(Clone, Debug)]
-pub struct EthereumClient {
-    http: reqwest::Client,
-    url: reqwest::Url,
+#[derive(Clone, Debug, PartialEq, Eq, EthEvent)]
+#[ethevent(name = "LogMemoryPageFactContinuous")]
+pub struct LogMemoryPageFactContinuous {
+    pub fact_hash: [u8; 32],
+    pub memory_hash: U256,
+    pub prod: U256,
 }
 
-const HTTP_OK: u16 = 200;
-
-impl EthereumClient {
-    pub fn with_password(mut url: reqwest::Url, password: &str) -> anyhow::Result<Self> {
-        url.set_password(Some(password)).map_err(|_| anyhow::anyhow!("Setting password failed"))?;
-        Self::new(url)
+impl EthereumClient1 {
+    pub fn new(
+        url: String,
+        core_contract: Address,
+        verifier_contract: Address,
+        memory_page_contract: Address,
+    ) -> Result<Self, Error> {
+        let provider = Provider::<Http>::try_from(url).map_err(|e| Error::L1Connection(e.to_string()))?;
+        Ok(Self { http_provider: provider, core_contract, verifier_contract, memory_page_contract })
     }
 
-    pub fn new(url: reqwest::Url) -> anyhow::Result<Self> {
-        Ok(Self { http: reqwest::ClientBuilder::new().build()?, url })
-    }
-
-    async fn get_finalized_block_hash(&self) -> anyhow::Result<H256> {
-        self.call_ethereum(serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_getBlockByNumber",
-            "params": [
-                "finalized",
-                false
-            ],
-            "id": 0
-        }))
-        .await
-        .and_then(|value| get_h256(&value["hash"]))
-    }
-
-    async fn call_starknet_contract(
+    pub async fn query_state_update(
         &self,
-        block_hash: &str,
-        address: &str,
-        signature: &str,
-    ) -> anyhow::Result<serde_json::Value> {
-        let data = encode_ethereum_call_data(signature.as_bytes());
-        self.call_ethereum(serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_call",
-            "params": [
-                {
-                    "to": address,
-                    "value": "0x0",
-                    "data": data
-                },
-                {"blockHash": block_hash}
-            ],
-            "id": 0
-        }))
-        .await
-    }
+        from_eth_height: u64,
+        to_eth_height: u64,
+    ) -> Result<Vec<LogStateUpdate>, Error> {
+        let filter = Filter::new()
+            .address(self.core_contract)
+            .event("LogStateUpdate(uint256,int256,uint256)")
+            .from_block(from_eth_height)
+            .to_block(to_eth_height);
 
-    async fn call_ethereum(&self, value: serde_json::Value) -> anyhow::Result<serde_json::Value> {
-        let res = self.http.post(self.url.clone()).json(&value).send().await?;
+        let logs = self.http_provider.get_logs(&filter).await.map_err(|e| Error::L1Connection(e.to_string()))?;
 
-        let status = res.status();
-        let (code, message) = (status.as_u16(), status.as_str());
-        if code != HTTP_OK {
-            tracing::error!(code, message, "Ethereum call failed");
-            anyhow::bail!(code);
+        let mut starknet_state_updates = Vec::new();
+        for l in logs.iter() {
+            let raw_log = RawLog::from(l.clone());
+            starknet_state_updates
+                .push(<LogStateUpdate as EthLogDecode>::decode_log(&raw_log).map_err(|_| Error::L1EventDecode)?);
         }
 
-        let response: serde_json::Value = res.json().await?;
-        Ok(response["result"].clone())
-    }
-}
-
-#[async_trait::async_trait]
-impl EthereumApi for EthereumClient {
-    async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate> {
-        let hash = self.get_finalized_block_hash().await?;
-        let hash = format!("0x{}", hex::encode(hash.as_bytes()));
-        let addr = format!("0x{}", hex::encode(address.as_bytes()));
-
-        Ok(EthereumStateUpdate {
-            state_root: self
-                .call_starknet_contract(&hash, &addr, "stateRoot()")
-                .await
-                .and_then(|value| get_h256(&value))
-                .and_then(get_felt)?,
-            block_hash: self
-                .call_starknet_contract(&hash, &addr, "stateBlockHash()")
-                .await
-                .and_then(|value| get_h256(&value))
-                .and_then(get_felt)
-                .map(BlockHash)?,
-            block_number: self
-                .call_starknet_contract(&hash, &addr, "stateBlockNumber()")
-                .await
-                .and_then(|value| get_u256(&value))
-                .and_then(get_number)?,
-        })
+        Ok(starknet_state_updates)
     }
 
-    async fn get_chain(&self) -> anyhow::Result<EthereumChain> {
-        let id = self
-            .call_ethereum(serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "eth_chainId",
-                "params": [],
-                "id": 0
-            }))
+    pub async fn query_state_transition_fact(
+        &self,
+        from_eth_height: u64,
+        to_eth_height: u64,
+    ) -> Result<Vec<LogStateTransitionFact>, Error> {
+        let filter = Filter::new()
+            .address(self.core_contract)
+            .event("LogStateTransitionFact(bytes32)")
+            .from_block(from_eth_height)
+            .to_block(to_eth_height);
+
+        let logs = self.http_provider.get_logs(&filter).await.map_err(|e| Error::L1Connection(e.to_string()))?;
+
+        let mut starknet_state_transaction_facts = Vec::new();
+        for l in logs.iter() {
+            let raw_log = RawLog::from(l.clone());
+            starknet_state_transaction_facts.push(
+                <LogStateTransitionFact as EthLogDecode>::decode_log(&raw_log).map_err(|_| Error::L1EventDecode)?,
+            );
+        }
+
+        Ok(starknet_state_transaction_facts)
+    }
+
+    pub async fn query_memory_pages_hashes(
+        &self,
+        from_eth_height: u64,
+        to_eth_height: u64,
+    ) -> Result<Vec<LogMemoryPagesHashes>, Error> {
+        let filter = Filter::new()
+            .address(self.verifier_contract)
+            .event("LogMemoryPagesHashes(bytes32,bytes32[])")
+            .from_block(from_eth_height)
+            .to_block(to_eth_height);
+
+        let logs = self.http_provider.get_logs(&filter).await.map_err(|e| Error::L1Connection(e.to_string()))?;
+
+        let mut memory_pages_hashes = Vec::new();
+
+        for l in logs.iter() {
+            let raw_log = RawLog::from(l.clone());
+            memory_pages_hashes
+                .push(<LogMemoryPagesHashes as EthLogDecode>::decode_log(&raw_log).map_err(|_| Error::L1EventDecode)?);
+        }
+
+        Ok(memory_pages_hashes)
+    }
+
+    pub async fn query_memory_page_fact_continuous_logs(
+        &self,
+        from_eth_height: u64,
+        to_eth_height: u64,
+    ) -> Result<Vec<LogMemoryPageFactContinuous>, Error> {
+        let filter = Filter::new()
+            .address(self.memory_page_contract)
+            .event("LogMemoryPageFactContinuous(bytes32,uint256,uint256)")
+            .from_block(from_eth_height)
+            .to_block(to_eth_height);
+
+        let logs = self.http_provider.get_logs(&filter).await.map_err(|e| Error::L1Connection(e.to_string()))?;
+
+        let mut memory_pages_hashes = Vec::new();
+
+        for l in logs.iter() {
+            let raw_log = RawLog::from(l.clone());
+            memory_pages_hashes.push(
+                <LogMemoryPageFactContinuous as EthLogDecode>::decode_log(&raw_log)
+                    .map_err(|_| Error::L1EventDecode)?,
+            );
+            println!("{:#?}", l.transaction_hash);
+        }
+
+        Ok(memory_pages_hashes)
+    }
+
+    pub async fn query_and_decode_transaction(&self, hash: H256) -> Result<Vec<U256>, Error> {
+        let tx = self
+            .http_provider
+            .get_transaction(hash)
             .await
-            .and_then(|value| get_u256(&value))?;
-        Ok(match id {
-            x if x == U256::from(1u32) => EthereumChain::Mainnet,
-            x if x == U256::from(5u32) => EthereumChain::Goerli,
-            x => EthereumChain::Other(x),
-        })
+            .map_err(|e| Error::L1Connection(e.to_string()))?
+            .ok_or(Error::Other("query transaction by hash get none".to_string()))?;
+
+        let abi = BaseContract::from(
+            parse_abi(&["function registerContinuousMemoryPage(uint256 startAddr,uint256[] values,uint256 z,uint256 \
+                         alpha,uint256 prime)"])
+            .unwrap(),
+        );
+
+        let (_, data, _, _, _): (U256, Vec<U256>, U256, U256, U256) =
+            abi.decode("registerContinuousMemoryPage", tx.input.as_ref()).unwrap();
+
+        Ok(data)
     }
 }
 
-fn encode_ethereum_call_data(signature: &[u8]) -> String {
-    let mut output: [u8; 32] = Default::default();
-    keccak_hash::keccak_256(signature, &mut output[..]);
-    format!("0x{}", hex::encode(&output[0..4]))
+#[tokio::test]
+async fn test_get_state_update() {
+    let contract_address = "0xc662c410c0ecf747543f5ba90660f6abebd9c8c4".parse::<Address>().unwrap();
+    let verifier_address = "0x47312450B3Ac8b5b8e247a6bB6d523e7605bDb60".parse::<Address>().unwrap();
+    let memory_page_address = "0xdc1534eeBF8CEEe76E31C98F5f5e0F9979476c87".parse::<Address>().unwrap();
+
+    let eth_mainnet_url = "https://eth.llamarpc.com".to_string();
+
+    let client =
+        EthereumClient1::new(eth_mainnet_url, contract_address, verifier_address, memory_page_address).unwrap();
+    client.query_state_update(18623979, 18623980).await.unwrap();
 }
 
-fn get_h256(value: &serde_json::Value) -> anyhow::Result<H256> {
-    use std::str::FromStr;
-    value.as_str().map(lpad64).and_then(|val| H256::from_str(&val).ok()).ok_or(anyhow::anyhow!("Failed to fetch H256"))
+#[tokio::test]
+async fn test_get_state_transition_fact() {
+    let contract_address = "0xc662c410c0ecf747543f5ba90660f6abebd9c8c4".parse::<Address>().unwrap();
+    let verifier_address = "0x47312450B3Ac8b5b8e247a6bB6d523e7605bDb60".parse::<Address>().unwrap();
+    let memory_page_address = "0xdc1534eeBF8CEEe76E31C98F5f5e0F9979476c87".parse::<Address>().unwrap();
+
+    let eth_mainnet_url = "https://eth.llamarpc.com".to_string();
+
+    let client =
+        EthereumClient1::new(eth_mainnet_url, contract_address, verifier_address, memory_page_address).unwrap();
+    client.query_state_transition_fact(18626167u64, 18626168u64).await.unwrap();
 }
 
-fn get_u256(value: &serde_json::Value) -> anyhow::Result<U256> {
-    use std::str::FromStr;
-    value.as_str().map(lpad64).and_then(|val| U256::from_str(&val).ok()).ok_or(anyhow::anyhow!("Failed to fetch U256"))
+#[tokio::test]
+async fn test_get_memory_pages_hashes() {
+    let contract_address = "0xde29d060D45901Fb19ED6C6e959EB22d8626708e".parse::<Address>().unwrap();
+    let verifier_address = "0xb59D5F625b63fbb04134213A526AA3762555B853".parse::<Address>().unwrap();
+    let memory_page_address = "0xdc1534eeBF8CEEe76E31C98F5f5e0F9979476c87".parse::<Address>().unwrap();
+
+    let eth_mainnet_url = "https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH".to_string();
+
+    let client =
+        EthereumClient1::new(eth_mainnet_url, contract_address, verifier_address, memory_page_address).unwrap();
+    client.query_memory_pages_hashes(10000296, 10000296).await;
 }
 
-fn get_felt(value: H256) -> anyhow::Result<StarkHash> {
-    let felt = StarkFelt::new(*value.as_fixed_bytes())?;
-    Ok(felt)
+#[tokio::test]
+async fn get_memory_page_fact_continuous_logs() {
+    let contract_address = "0xde29d060D45901Fb19ED6C6e959EB22d8626708e".parse::<Address>().unwrap();
+    let verifier_address = "0xb59D5F625b63fbb04134213A526AA3762555B853".parse::<Address>().unwrap();
+    let memory_page_address = "0xdc1534eeBF8CEEe76E31C98F5f5e0F9979476c87".parse::<Address>().unwrap();
+
+    let eth_mainnet_url = "https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH".to_string();
+
+    let client =
+        EthereumClient1::new(eth_mainnet_url, contract_address, verifier_address, memory_page_address).unwrap();
+
+    client.query_memory_page_fact_continuous_logs(10087516, 10087516).await;
 }
 
-fn get_number(value: U256) -> anyhow::Result<BlockNumber> {
-    let value = value.as_u64();
-    Ok(BlockNumber(value))
-}
+#[tokio::test]
+async fn decode_transaction() {
+    let contract_address = "0xde29d060D45901Fb19ED6C6e959EB22d8626708e".parse::<Address>().unwrap();
+    let verifier_address = "0xb59D5F625b63fbb04134213A526AA3762555B853".parse::<Address>().unwrap();
+    let memory_page_address = "0xdc1534eeBF8CEEe76E31C98F5f5e0F9979476c87".parse::<Address>().unwrap();
 
-fn lpad64(value: &str) -> String {
-    let input = value.strip_prefix("0x").unwrap_or(value);
-    let prefix = if value.starts_with("0x") { "0x" } else { "" };
-    if input.len() == 64 { format!("{prefix}{input}") } else { format!("{prefix}{input:0>64}") }
-}
+    let eth_mainnet_url = "https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH".to_string();
 
-#[cfg(test)]
-mod tests {
-    use std::str::FromStr;
+    let client =
+        EthereumClient1::new(eth_mainnet_url, contract_address, verifier_address, memory_page_address).unwrap();
 
-    use httpmock::prelude::*;
-    use primitive_types::H160;
-    use reqwest::Url;
+    let tx_hash = "0x68a68fce176bb37aa3bbb6f19f68fb8d8d6401f1f8bec07456c99500a9740dca".parse::<H256>().unwrap();
 
-    use super::*;
-
-    #[tokio::test]
-    #[ignore = "live ethereum call"]
-    async fn test_live() -> anyhow::Result<()> {
-        let address = H160::from(core_addr::MAINNET);
-
-        let url = Url::parse("https://eth.llamarpc.com")?;
-        let client = EthereumClient::new(url)?;
-
-        let state = client.get_starknet_state(&address).await?;
-        println!("{state:#?}");
-
-        let chain = client.get_chain().await?;
-        println!("{chain:?}");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_chain_id() -> anyhow::Result<()> {
-        let server = MockServer::start_async().await;
-
-        let mock = server.mock(|when, then| {
-            when.path("/")
-                .method(POST)
-                .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_chainId","params":[]}"#);
-            then.status(200)
-                .header("Content-type", "application/json")
-                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x1"}"#);
-        });
-
-        let url = Url::parse(&server.url("/"))?;
-        let eth = EthereumClient::new(url)?;
-        let chain_id = eth.get_chain().await?;
-
-        mock.assert();
-        assert_eq!(chain_id, EthereumChain::Mainnet);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_get_starknet_state() -> anyhow::Result<()> {
-        let server = MockServer::start_async().await;
-
-        let mock_ethereum_block = server.mock(|when, then| {
-            when.path("/")
-                .method(POST)
-                .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["finalized",false]}"#);
-            then.status(200)
-                .header("Content-type", "application/json")
-                .body(r#"{"jsonrpc":"2.0","id":0,"result":{"number":"0x1048e0e","hash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}}"#);
-        });
-
-        let mock_block_number = server.mock(|when, then| {
-            when.path("/")
-                .method(POST)
-                .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x35befa5d","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},{"blockHash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}]}"#);
-            then.status(200)
-                .header("Content-type", "application/json")
-                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x0000000000000000000000000000000000000000000000000000000000007eeb"}"#);
-        });
-
-        let mock_block_hash = server.mock(|when, then| {
-            when.path("/")
-                .method(POST)
-                .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x382d83e3","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},{"blockHash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}]}"#);
-            then.status(200)
-                .header("Content-type", "application/json")
-                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f"}"#);
-        });
-
-        let mock_state_root = server.mock(|when, then| {
-            when.path("/")
-                .method(POST)
-                .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x9588eca2","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},{"blockHash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}]}"#);
-            then.status(200)
-                .header("Content-type", "application/json")
-                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f"}"#);
-        });
-
-        let url = Url::parse(&server.url("/"))?;
-        let eth = EthereumClient::new(url)?;
-
-        let block_number = U256::from_str_radix("0x7eeb", 16)?;
-        let block_hash = H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")?;
-        let global_root = H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")?;
-
-        let expected = EthereumStateUpdate {
-            state_root: Default::default(),
-            block_number: get_number(block_number)?,
-            block_hash: BlockHash(get_felt(block_hash)?),
-        };
-
-        let addr = H160::from_slice(&core_addr::MAINNET);
-        let state = eth.get_starknet_state(&addr).await?;
-
-        mock_ethereum_block.assert();
-        mock_block_number.assert();
-        mock_block_hash.assert();
-        mock_state_root.assert();
-        assert_eq!(state, expected);
-        Ok(())
-    }
-
-    #[test]
-    fn test_h256() {
-        assert!(H256::from_str("0x0000000000000000000000000000000000000000000000000000000000007eeb").is_ok());
-        assert!(H256::from_str("0x7eeb").is_err());
-
-        let expected = H256::from_str("0x0000000000000000000000000000000000000000000000000000000000007eeb").unwrap();
-        assert_eq!(H256::from_str(&lpad64("0x7eeb")).unwrap(), expected);
-    }
-
-    #[test]
-    fn test_lpad64() {
-        for (input, expected) in [
-            (
-                "0x0000000000000000000000000000000000000000000000000000000000007eeb",
-                "0x0000000000000000000000000000000000000000000000000000000000007eeb",
-            ),
-            (
-                "0000000000000000000000000000000000000000000000000000000000007eeb",
-                "0000000000000000000000000000000000000000000000000000000000007eeb",
-            ),
-            ("7eeb", "0000000000000000000000000000000000000000000000000000000000007eeb"),
-            ("0x7eeb", "0x0000000000000000000000000000000000000000000000000000000000007eeb"),
-            ("", "0000000000000000000000000000000000000000000000000000000000000000"),
-            ("0x", "0x0000000000000000000000000000000000000000000000000000000000000000"),
-        ] {
-            assert_eq!(lpad64(input), expected, "for input: {}", input);
-        }
-    }
+    client.query_and_decode_transaction(tx_hash).await;
 }

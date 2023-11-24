@@ -3,6 +3,7 @@ mod sync;
 
 #[cfg(test)]
 mod tests;
+pub mod parse_da;
 
 use std::sync::Arc;
 

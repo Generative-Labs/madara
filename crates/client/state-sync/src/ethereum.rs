@@ -282,6 +282,17 @@ impl EthereumStateFetcher {
         let (_, data, _, _, _): (U256, Vec<U256>, U256, U256, U256) =
             abi.decode("registerContinuousMemoryPage", tx.input.as_ref()).unwrap();
 
+		match parse_da::decode_011_diff(&mut data){
+			Ok(state_diff) => {
+				println!("{:?}", state_diff);
+				// apply_state_diff()
+			}
+			Err(err) => {
+				// handle err
+				panic!("Error converting nonces_value: {:?}", err);
+			}
+		}
+
         Ok(data)
     }
 

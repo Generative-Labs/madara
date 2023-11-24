@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use blockifier::execution::contract_class::ContractClass;
 use blockifier::state::cached_state::CommitmentStateDiff;
+use ethers::types::U256;
 use frame_support::{Identity, StorageHasher};
 #[cfg(not(feature = "std"))]
 use hashbrown::hash_map::DefaultHashBuilder as HasherBuilder;
@@ -25,7 +26,7 @@ use sp_runtime::generic::{Digest, DigestItem, Header as GenericHeader};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
 use sp_state_machine::{OverlayedChanges, StorageKey, StorageValue};
 use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonce, PatriciaKey};
-use starknet_api::hash::StarkFelt;
+use starknet_api::hash::{StarkFelt, StarkHash};
 use starknet_api::state::StorageKey as StarknetStorageKey;
 
 use crate::Error;

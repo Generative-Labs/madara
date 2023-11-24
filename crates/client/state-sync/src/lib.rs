@@ -16,6 +16,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_runtime::generic::Header as GenericHeader;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
+use starknet_api::state::StateDiff;
 use sync::StateWriter;
 
 use crate::sync::SyncStateDiff;
@@ -24,15 +25,17 @@ type EncodeStateDiff = Vec<U256>;
 
 #[derive(Debug, Clone)]
 pub struct FetchState {
-    pub block_info: L1L2BlockMapping,
-    pub encode_state_diff: EncodeStateDiff,
+    pub l1_l2_block_mapping: L1L2BlockMapping,
+    pub post_state_root: U256,
+    pub state_diff: StateDiff,
 }
 
 #[async_trait]
 pub trait StateFetcher {
-    async fn fetch_state_diff(&self, from_l1_block: u64, l2_start_block: u64) -> Result<Vec<FetchState>, Error>;
+    async fn state_diff(&self, l1_from: u64, l2_start: u64) -> Result<Vec<FetchState>, Error>;
 }
 
+// TODO pass a config then create state_fetcher
 pub async fn run<B, C, BE, SF>(
     state_fetcher: Arc<SF>,
     madara_backend: Arc<mc_db::Backend<B>>,
@@ -53,30 +56,32 @@ where
 
     let fetcher_task = async move {
         loop {
-            if let Ok(fs) = state_fetcher_clone.fetch_state_diff(10, 11).await {
+            if let Ok(fs) = state_fetcher_clone.state_diff(10, 11).await {
+                // TODO channel send vec. not a loop?
                 for s in fs.iter() {
                     let _ = tx.send(s.clone());
                 }
             }
-            // time.sleep() need sleep ??
+            // TODO time.sleep() need sleep ??
         }
     };
 
     let state_write_task = async move {
         loop {
             if let Some(s) = rx.next().await {
-                println!("{:#?}", s.block_info);
                 let _ = state_writer.apply_state_diff(0, SyncStateDiff::default());
+                // TODO after apply state diff success. write sync state to madara backend.
             }
         }
     };
 
-    let task = future::join(fetcher_task, state_write_task).map(|_| ()).boxed();
+    let task =
+        future::ready(()).then(move |_| future::select(Box::pin(fetcher_task), Box::pin(state_write_task))).map(|_| ());
 
     Ok(task)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Error {
     AlreadyInChain,
     UnknownBlock,
@@ -84,5 +89,6 @@ pub enum Error {
     CommitStorage(String),
     L1Connection(String),
     L1EventDecode,
+    L1StateError(String),
     Other(String),
 }

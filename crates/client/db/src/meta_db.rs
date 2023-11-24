@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 // Substrate
 use parity_scale_codec::{Decode, Encode};
-use sp_core::H256;
+use sp_core::{H256, U256};
 use sp_database::Database;
 use sp_runtime::traits::Block as BlockT;
 
@@ -13,7 +13,7 @@ use crate::DbHash;
 pub struct L1L2BlockMapping {
     pub l1_block_hash: H256,
     pub l1_block_number: u64,
-    pub l2_block_hash: H256,
+    pub l2_block_hash: U256,
     pub l2_block_number: u64,
 }
 

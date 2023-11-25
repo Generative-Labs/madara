@@ -11,6 +11,7 @@ use starknet_api::block::{BlockHash, BlockNumber};
 use starknet_api::hash::{StarkFelt, StarkHash};
 use starknet_api::state::StateDiff;
 
+use crate::parse_da;
 use crate::{Error, FetchState, StateFetcher};
 
 #[derive(Debug)]
@@ -279,12 +280,11 @@ impl EthereumStateFetcher {
             .unwrap(),
         );
 
-        let (_, data, _, _, _): (U256, Vec<U256>, U256, U256, U256) =
+        let (_, mut data, _, _, _): (U256, Vec<U256>, U256, U256, U256) =
             abi.decode("registerContinuousMemoryPage", tx.input.as_ref()).unwrap();
 
-		match parse_da::decode_011_diff(&mut data){
+		match parse_da::decode_pre_011_diff(&mut data, true){
 			Ok(state_diff) => {
-				println!("{:?}", state_diff);
 				// apply_state_diff()
 			}
 			Err(err) => {

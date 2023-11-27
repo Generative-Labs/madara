@@ -5797,16 +5797,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "keccak-hash"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b286e6b663fb926e1eeb68528e69cb70ed46c6d65871a21b2215ae8154c6d3c"
-dependencies = [
- "primitive-types",
- "tiny-keccak",
-]
-
-[[package]]
 name = "kv-log-macro"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13462,16 +13452,13 @@ dependencies = [
  "async-trait",
  "blockifier",
  "const-decoder",
- "ethereum-types",
  "ethers",
  "frame-support 25.0.0",
  "futures",
  "hashbrown 0.14.2",
- "hex",
  "hexlit",
  "httpmock",
  "indexmap 2.0.0-pre",
- "keccak-hash",
  "lazy_static",
  "madara-runtime",
  "mc-db",
@@ -13486,9 +13473,7 @@ dependencies = [
  "mp-transactions",
  "pallet-starknet",
  "pretty_assertions",
- "primitive-types",
  "project-root",
- "reqwest",
  "sc-block-builder",
  "sc-client-api",
  "sc-client-db",
@@ -13508,8 +13493,6 @@ dependencies = [
  "tempfile",
  "test-case",
  "tokio",
- "tokio-retry",
- "tracing",
 ]
 
 [[package]]

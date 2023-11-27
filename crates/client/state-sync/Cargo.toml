@@ -5,22 +5,10 @@ edition.workspace = true
 repository.workspace = true
 version.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 futures = { workspace = true }
-
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-reqwest = { workspace = true, features = ["json"]}
-primitive-types = { workspace = true }
-serde_json = { workspace = true, features = [
-    "arbitrary_precision",
-    "raw_value",
-] }
-hex = { workspace = true }
-tracing = { workspace = true }
 indexmap = { workspace = true }
 hashbrown = { workspace = true }
 
@@ -49,18 +37,16 @@ sc-client-api = { workspace = true }
 sc-client-db = { workspace = true }
 frame-support = { worksapce = true }
 
-tokio-retry = "0.3.0"
-const-decoder = "0.3.0"
-keccak-hash = "0.10.0"
-ethereum-types = "0.14.1"
-
 # Ethereum
 ethers = "2.0.11"
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "test-util"] }
-futures = { workspace = true }
+tokio = { workspace = true, features = ["macros", "test-util", "rt-multi-thread"] }
 pretty_assertions = { workspace = true }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
 
 # Substrate
 sc-block-builder = { workspace = true }
@@ -77,7 +63,6 @@ starknet-crypto = { workspace = true, features = ["alloc"] }
 pallet-starknet = { workspace = true }
 mp-felt = { workspace = true, features = ["parity-scale-codec", "serde"] }
 mp-transactions = { workspace = true }
-mc-db = { workspace = true }
 
 const-decoder = "0.3.0"
 httpmock = "0.7.0-rc.1"

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use primitive_types::U256;
+use ethers::types::U256;
 use sp_blockchain::HeaderBackend;
 use starknet_api::state::StateDiff;
 

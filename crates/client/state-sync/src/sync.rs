@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use blockifier::execution::contract_class::ContractClass;
 use blockifier::state::cached_state::CommitmentStateDiff;
-use ethers::types::U256;
 use frame_support::{Identity, StorageHasher};
 #[cfg(not(feature = "std"))]
 use hashbrown::hash_map::DefaultHashBuilder as HasherBuilder;
@@ -26,8 +25,8 @@ use sp_runtime::generic::{Digest, DigestItem, Header as GenericHeader};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
 use sp_state_machine::{OverlayedChanges, StorageKey, StorageValue};
 use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonce, PatriciaKey};
-use starknet_api::hash::{StarkFelt, StarkHash};
-use starknet_api::state::StorageKey as StarknetStorageKey;
+use starknet_api::hash::StarkFelt;
+use starknet_api::state::{StateDiff, StorageKey as StarknetStorageKey};
 
 use crate::Error;
 
@@ -48,8 +47,34 @@ where
         Self { client, substrate_backend, madara_backend, phantom_data: PhantomData }
     }
 
+    pub fn apply_state_diff(&self, starknet_block_number: u64, state_diff: &StateDiff) -> Result<(), Error> {
+        let mut inner_state_diff = InnerStateDiff::default();
+
+        // for (k, v) in state_diff.declared_classes.iter(){
+        //     inner_state_diff.declared_classes.insert(k.clone(),v.1.clone());
+        // }
+
+        for (contract_address, class_hash) in state_diff.deployed_contracts.iter() {
+            inner_state_diff.commitment.address_to_class_hash.insert(*contract_address, *class_hash);
+        }
+
+        for (contract_address, storage_changes) in state_diff.storage_diffs.iter() {
+            inner_state_diff.commitment.storage_updates.insert(*contract_address, storage_changes.clone());
+        }
+
+        for (class_hash, (compiled_class_hash, _)) in state_diff.declared_classes.iter() {
+            inner_state_diff.commitment.class_hash_to_compiled_class_hash.insert(*class_hash, *compiled_class_hash);
+        }
+
+        for (contract_address, nonce) in state_diff.nonces.iter() {
+            inner_state_diff.commitment.address_to_nonce.insert(*contract_address, *nonce);
+        }
+
+        self.apply_inner_state_diff(starknet_block_number, inner_state_diff)
+    }
+
     // Apply the state difference to the data layer.
-    pub fn apply_state_diff(&self, starknet_block_number: u64, state_diff: SyncStateDiff) -> Result<(), Error> {
+    pub fn apply_inner_state_diff(&self, starknet_block_number: u64, state_diff: InnerStateDiff) -> Result<(), Error> {
         let block_info = self.client.info();
 
         let starknet_block = self.create_starknet_block(&block_info, starknet_block_number as u32)?;
@@ -141,14 +166,14 @@ pub(crate) struct InnerStorageChangeSet {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct SyncStateDiff {
+pub struct InnerStateDiff {
     pub commitment: CommitmentStateDiff,
     pub declared_classes: IndexMap<ClassHash, ContractClass, HasherBuilder>,
 }
 
-impl Default for SyncStateDiff {
+impl Default for InnerStateDiff {
     fn default() -> Self {
-        SyncStateDiff {
+        InnerStateDiff {
             commitment: CommitmentStateDiff {
                 address_to_class_hash: Default::default(),
                 address_to_nonce: Default::default(),
@@ -175,10 +200,10 @@ pub fn storage_key_build(prefix: Vec<u8>, key: &[u8]) -> Vec<u8> {
     [prefix, Identity::hash(key)].concat()
 }
 
-impl Into<SyncStateDiff> for InnerStorageChangeSet {
+impl Into<InnerStateDiff> for InnerStorageChangeSet {
     // TODO replace by try_into.
-    fn into(self) -> SyncStateDiff {
-        let mut state_diff = SyncStateDiff::default();
+    fn into(self) -> InnerStateDiff {
+        let mut state_diff = InnerStateDiff::default();
 
         for (_prefix, full_storage_key, change) in self.iter() {
             // The storages we are interested in all have prefix of length 32 bytes.
@@ -245,8 +270,8 @@ impl Into<SyncStateDiff> for InnerStorageChangeSet {
     }
 }
 
-impl From<SyncStateDiff> for InnerStorageChangeSet {
-    fn from(inner_state_diff: SyncStateDiff) -> Self {
+impl From<InnerStateDiff> for InnerStorageChangeSet {
+    fn from(inner_state_diff: InnerStateDiff) -> Self {
         let mut changes: Vec<(StorageKey, Option<StorageValue>)> = Vec::new();
         // now starknet not use child changes.
         let mut _child_changes: Vec<(StorageKey, Vec<(StorageKey, Option<StorageValue>)>)> = Vec::new();

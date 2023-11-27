@@ -5,6 +5,7 @@ mod sync;
 #[cfg(test)]
 mod tests;
 
+use std::cmp::Ordering;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -20,15 +21,23 @@ use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
 use starknet_api::state::StateDiff;
 use sync::StateWriter;
 
-use crate::sync::SyncStateDiff;
-
-type EncodeStateDiff = Vec<U256>;
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchState {
     pub l1_l2_block_mapping: L1L2BlockMapping,
     pub post_state_root: U256,
     pub state_diff: StateDiff,
+}
+
+impl PartialOrd for FetchState {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.l1_l2_block_mapping.l2_block_number.cmp(&other.l1_l2_block_mapping.l2_block_number))
+    }
+}
+
+impl Ord for FetchState {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.l1_l2_block_mapping.l2_block_number.cmp(&other.l1_l2_block_mapping.l2_block_number)
+    }
 }
 
 #[async_trait]
@@ -49,19 +58,39 @@ where
     BE: Backend<B> + 'static,
     SF: StateFetcher + Send + Sync + 'static,
 {
-    let (mut tx, mut rx) = mpsc::unbounded::<FetchState>();
+    let (mut tx, mut rx) = mpsc::unbounded::<Vec<FetchState>>();
 
-    let state_writer = StateWriter::new(substrate_client, substrate_backend, madara_backend);
+    let state_writer = StateWriter::new(substrate_client, substrate_backend, madara_backend.clone());
     let state_writer = Arc::new(state_writer);
     let state_fetcher_clone = state_fetcher.clone();
 
+    let madara_backend_clone = madara_backend.clone();
     let fetcher_task = async move {
+        let mut eth_start_height = 0u64;
+        let mut starknet_start_height = 0u64;
+
+        let l1_l2_mapping = madara_backend_clone.meta().last_l1_l2_mapping();
+
+        match l1_l2_mapping {
+            Ok(mapping) => {
+                eth_start_height = mapping.l1_block_number + 1;
+                starknet_start_height = mapping.l2_block_number + 1;
+            }
+            Err(_) => {}
+        }
+
         loop {
-            if let Ok(fs) = state_fetcher_clone.state_diff(10, 11).await {
-                // TODO channel send vec. not a loop?
-                for s in fs.iter() {
-                    let _ = tx.send(s.clone());
+            if let Ok(mut fetched_states) =
+                state_fetcher_clone.state_diff(eth_start_height, starknet_start_height).await
+            {
+                fetched_states.sort();
+
+                if let Some(last) = fetched_states.last() {
+                    eth_start_height = last.l1_l2_block_mapping.l1_block_number + 1;
+                    starknet_start_height = last.l1_l2_block_mapping.l2_block_number + 1;
                 }
+
+                let _ = tx.send(fetched_states);
             }
             // TODO time.sleep() need sleep ??
         }
@@ -69,9 +98,14 @@ where
 
     let state_write_task = async move {
         loop {
-            if let Some(s) = rx.next().await {
-                let _ = state_writer.apply_state_diff(0, SyncStateDiff::default());
-                // TODO after apply state diff success. write sync state to madara backend.
+            if let Some(fetched_states) = rx.next().await {
+                for state in fetched_states.iter() {
+                    let _ = state_writer.apply_state_diff(state.l1_l2_block_mapping.l2_block_number, &state.state_diff);
+                }
+
+                if let Some(last) = fetched_states.last() {
+                    madara_backend.meta().write_last_l1_l2_mapping(&last.l1_l2_block_mapping);
+                }
             }
         }
     };

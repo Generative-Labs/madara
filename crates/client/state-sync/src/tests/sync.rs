@@ -230,15 +230,15 @@ fn test_apply_deploy_contract_state_diff() {
         child_changes: block.storage_changes.child_storage_changes.clone(),
     };
 
-    let inner_state_diff: SyncStateDiff = ics.into();
+    let inner_state_diff: InnerStateDiff = ics.into();
     let ics2 = InnerStorageChangeSet::from(inner_state_diff.clone());
-    let inner_state_diff2: SyncStateDiff = ics2.into();
+    let inner_state_diff2: InnerStateDiff = ics2.into();
 
     assert_eq!(inner_state_diff, inner_state_diff2);
     // apply storage diff by StateSyncWorker
     let madara_db = create_temp_madara_backend();
-    let mut sync_worker = StateWriter::new(client.clone(), backend, madara_db);
-    sync_worker.apply_state_diff(2, inner_state_diff2).unwrap();
+    let sync_worker = StateWriter::new(client.clone(), backend, madara_db);
+    sync_worker.apply_inner_state_diff(2, inner_state_diff2).unwrap();
 
     let expected_erc20_address = ContractAddress(PatriciaKey(
         StarkFelt::try_from("00dc58c1280862c95964106ef9eba5d9ed8c0c16d05883093e4540f22b829dff").unwrap(),
@@ -299,16 +299,16 @@ fn test_apply_declare_contract_state_diff() {
         child_changes: block.storage_changes.child_storage_changes.clone(),
     };
 
-    let state_diff: SyncStateDiff = ics.into();
+    let state_diff: InnerStateDiff = ics.into();
     let ics2 = InnerStorageChangeSet::from(state_diff.clone());
-    let state_diff2: SyncStateDiff = ics2.into();
+    let state_diff2: InnerStateDiff = ics2.into();
 
     assert_eq!(state_diff, state_diff2);
 
     // apply storage diff by StateSyncWorker
     let madara_db = create_temp_madara_backend();
-    let mut sync_worker = StateWriter::new(client.clone(), backend, madara_db);
-    sync_worker.apply_state_diff(2, state_diff2).unwrap();
+    let sync_worker = StateWriter::new(client.clone(), backend, madara_db);
+    sync_worker.apply_inner_state_diff(2, state_diff2).unwrap();
 
     let block_info = client.info();
     let declared_contract = client
@@ -349,16 +349,16 @@ fn test_apply_deploy_account_state_diff() {
         child_changes: block.storage_changes.child_storage_changes.clone(),
     };
 
-    let state_diff: SyncStateDiff = ics.into();
+    let state_diff: InnerStateDiff = ics.into();
     let ics2 = InnerStorageChangeSet::from(state_diff.clone());
-    let state_diff2: SyncStateDiff = ics2.into();
+    let state_diff2: InnerStateDiff = ics2.into();
 
     assert_eq!(state_diff, state_diff2);
 
     // apply storage diff by StateSyncWorker
     let madara_db = create_temp_madara_backend();
-    let mut sync_worker = StateWriter::new(client.clone(), backend, madara_db);
-    sync_worker.apply_state_diff(2, state_diff2).unwrap();
+    let sync_worker = StateWriter::new(client.clone(), backend, madara_db);
+    sync_worker.apply_inner_state_diff(2, state_diff2).unwrap();
 
     let block_info = client.info();
     let deployed_account_class_hash =

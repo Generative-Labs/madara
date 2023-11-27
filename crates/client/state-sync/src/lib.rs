@@ -1,9 +1,9 @@
 mod ethereum;
 mod sync;
 
+pub mod parse_da;
 #[cfg(test)]
 mod tests;
-pub mod parse_da;
 
 use std::sync::Arc;
 

@@ -25,7 +25,7 @@ where
     C::Api: StarknetRuntimeApi<B>,
 {
     match client.runtime_api().contract_class_hash_by_address(block_hash, address) {
-        Ok(class_hash) => return Ok(class_hash.eq(&ClassHash::default())),
+        Ok(class_hash) => return Ok(!class_hash.eq(&ClassHash::default())),
         Err(e) => Err(Error::Other(e.to_string())),
     }
 }

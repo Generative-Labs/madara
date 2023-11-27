@@ -1,7 +1,7 @@
 mod ethereum;
+mod parser;
 mod sync;
 
-pub mod parse_da;
 #[cfg(test)]
 mod tests;
 
@@ -91,5 +91,6 @@ pub enum Error {
     L1Connection(String),
     L1EventDecode,
     L1StateError(String),
+    TypeError(String),
     Other(String),
 }

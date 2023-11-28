@@ -20,7 +20,7 @@ use mp_storage::{
 use sc_client_api::backend::NewBlockState::Best;
 use sc_client_api::backend::{Backend, BlockImportOperation};
 use sp_blockchain::{HeaderBackend, Info};
-use sp_core::{Decode, Encode, H256};
+use sp_core::{Decode, Encode, H256, U256};
 use sp_runtime::generic::{Digest, DigestItem, Header as GenericHeader};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
 use sp_state_machine::{OverlayedChanges, StorageKey, StorageValue};
@@ -28,7 +28,7 @@ use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonc
 use starknet_api::hash::StarkFelt;
 use starknet_api::state::{StateDiff, StorageKey as StarknetStorageKey};
 
-use crate::Error;
+use crate::{u256_to_h256, Error};
 
 pub struct StateWriter<B: BlockT, C, BE> {
     client: Arc<C>,
@@ -47,7 +47,12 @@ where
         Self { client, substrate_backend, madara_backend, phantom_data: PhantomData }
     }
 
-    pub fn apply_state_diff(&self, starknet_block_number: u64, state_diff: &StateDiff) -> Result<(), Error> {
+    pub fn apply_state_diff(
+        &self,
+        starknet_block_number: u64,
+        starknet_block_hash: U256,
+        state_diff: &StateDiff,
+    ) -> Result<(), Error> {
         let mut inner_state_diff = InnerStateDiff::default();
 
         for (contract_address, class_hash) in state_diff.deployed_contracts.iter() {
@@ -66,15 +71,21 @@ where
             inner_state_diff.commitment.address_to_nonce.insert(*contract_address, *nonce);
         }
 
-        self.apply_inner_state_diff(starknet_block_number, inner_state_diff)
+        let starknet_block_hash = u256_to_h256(starknet_block_hash);
+        self.apply_inner_state_diff(starknet_block_number, starknet_block_hash, inner_state_diff)
     }
 
     // Apply the state difference to the data layer.
-    pub fn apply_inner_state_diff(&self, starknet_block_number: u64, state_diff: InnerStateDiff) -> Result<(), Error> {
+    pub fn apply_inner_state_diff(
+        &self,
+        starknet_block_number: u64,
+        starknet_block_hash: H256,
+        state_diff: InnerStateDiff,
+    ) -> Result<(), Error> {
         let block_info = self.client.info();
 
         let starknet_block = self.create_starknet_block(&block_info, starknet_block_number as u32)?;
-        let starknet_block_hash = starknet_block.header().hash::<PedersenHasher>().into();
+        // let starknet_block_hash = starknet_block.header().hash::<PedersenHasher>().into();
         let digest = DigestItem::Consensus(MADARA_ENGINE_ID, mp_digest_log::Log::Block(starknet_block).encode());
 
         let mut substrate_block = SubstrateBlock {

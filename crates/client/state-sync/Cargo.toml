@@ -6,6 +6,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+tokio = { workspace = true, features = ["macros", "test-util", "rt-multi-thread"] }
 futures = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
@@ -42,7 +43,6 @@ frame-support = { worksapce = true }
 ethers = "2.0.11"
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "test-util", "rt-multi-thread"] }
 pretty_assertions = { workspace = true }
 serde_json = { workspace = true, features = [
     "arbitrary_precision",

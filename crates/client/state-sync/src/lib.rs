@@ -7,6 +7,7 @@ mod tests;
 
 use std::cmp::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use ethers::types::{H256, U256};
@@ -54,7 +55,7 @@ pub trait StateFetcher {
 }
 
 // TODO pass a config then create state_fetcher
-pub async fn run<B, C, BE, SF>(
+pub fn run<B, C, BE, SF>(
     state_fetcher: Arc<SF>,
     madara_backend: Arc<mc_db::Backend<B>>,
     substrate_client: Arc<C>,
@@ -99,9 +100,9 @@ where
                     starknet_start_height = last.l1_l2_block_mapping.l2_block_number + 1;
                 }
 
-                let _ = tx.send(fetched_states);
+                let _res = tx.send(fetched_states).await;
             }
-            // TODO time.sleep() need sleep ??
+            tokio::time::sleep(Duration::from_secs(5)).await;
         }
     };
 
@@ -109,7 +110,11 @@ where
         loop {
             if let Some(fetched_states) = rx.next().await {
                 for state in fetched_states.iter() {
-                    let _ = state_writer.apply_state_diff(state.l1_l2_block_mapping.l2_block_number, &state.state_diff);
+                    let _ = state_writer.apply_state_diff(
+                        state.l1_l2_block_mapping.l2_block_number,
+                        state.l1_l2_block_mapping.l2_block_hash,
+                        &state.state_diff,
+                    );
                 }
 
                 if let Some(last) = fetched_states.last() {
@@ -122,10 +127,17 @@ where
         }
     };
 
-    let task =
-        future::ready(()).then(move |_| future::select(Box::pin(fetcher_task), Box::pin(state_write_task))).map(|_| ());
+    let task = future::select(Box::pin(fetcher_task), Box::pin(state_write_task)).map(|_| ());
 
     Ok(task)
+}
+
+fn u256_to_h256(u256: U256) -> H256 {
+    let mut bytes = [0; 32];
+    u256.to_big_endian(&mut bytes);
+    let mut h256_bytes = [0; 32];
+    h256_bytes.copy_from_slice(&bytes[..32]);
+    H256::from(h256_bytes)
 }
 
 #[derive(Debug, Clone)]

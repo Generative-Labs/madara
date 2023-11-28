@@ -20,6 +20,7 @@ use sc_client_api::HeaderBackend;
 use sc_client_db::DatabaseSource;
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::BlockOrigin;
+use sp_core::H256;
 use sp_inherents::InherentData;
 use sp_runtime::traits::Block as BlockT;
 use sp_state_machine::BasicExternalities;
@@ -238,7 +239,7 @@ fn test_apply_deploy_contract_state_diff() {
     // apply storage diff by StateSyncWorker
     let madara_db = create_temp_madara_backend();
     let sync_worker = StateWriter::new(client.clone(), backend, madara_db);
-    sync_worker.apply_inner_state_diff(2, inner_state_diff2).unwrap();
+    sync_worker.apply_inner_state_diff(2, H256::random(), inner_state_diff2).unwrap();
 
     let expected_erc20_address = ContractAddress(PatriciaKey(
         StarkFelt::try_from("00dc58c1280862c95964106ef9eba5d9ed8c0c16d05883093e4540f22b829dff").unwrap(),
@@ -308,7 +309,7 @@ fn test_apply_declare_contract_state_diff() {
     // apply storage diff by StateSyncWorker
     let madara_db = create_temp_madara_backend();
     let sync_worker = StateWriter::new(client.clone(), backend, madara_db);
-    sync_worker.apply_inner_state_diff(2, state_diff2).unwrap();
+    sync_worker.apply_inner_state_diff(2, H256::random(), state_diff2).unwrap();
 
     let block_info = client.info();
     let declared_contract = client
@@ -358,7 +359,7 @@ fn test_apply_deploy_account_state_diff() {
     // apply storage diff by StateSyncWorker
     let madara_db = create_temp_madara_backend();
     let sync_worker = StateWriter::new(client.clone(), backend, madara_db);
-    sync_worker.apply_inner_state_diff(2, state_diff2).unwrap();
+    sync_worker.apply_inner_state_diff(2, H256::random(), state_diff2).unwrap();
 
     let block_info = client.info();
     let deployed_account_class_hash =
@@ -367,7 +368,7 @@ fn test_apply_deploy_account_state_diff() {
     assert_eq!(deployed_account_class_hash, account_class_hash);
 }
 
-fn create_temp_madara_backend() -> Arc<mc_db::Backend<runtime::Block>> {
+pub(crate) fn create_temp_madara_backend() -> Arc<mc_db::Backend<runtime::Block>> {
     let temp_dir = tempdir().unwrap();
     let temp_dir_path = temp_dir.path();
     let madara_db = mc_db::Backend::<runtime::Block>::open(

@@ -13460,6 +13460,7 @@ dependencies = [
  "httpmock",
  "indexmap 2.0.0-pre",
  "lazy_static",
+ "log",
  "madara-runtime",
  "mc-db",
  "mc-mapping-sync",

@@ -11,6 +11,7 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 indexmap = { workspace = true }
 hashbrown = { workspace = true }
+log = { workspace = true }
 
 # Madara
 mp-hashers = { workspace = true, default-features = true }

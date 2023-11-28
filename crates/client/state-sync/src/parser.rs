@@ -30,23 +30,25 @@ macro_rules! convert_to_starknet_type {
     }};
 }
 
+#[allow(unused)]
 fn contract_deployed<B, C>(address: ContractAddress, block_hash: B::Hash, client: Arc<C>) -> Result<bool, Error>
 where
     B: BlockT,
     C: ProvideRuntimeApi<B> + HeaderBackend<B>,
     C::Api: StarknetRuntimeApi<B>,
 {
+    #[cfg(test)]
+    // When testing, we have only an empty client.
+    return Ok(false);
+
+    #[cfg(not(test))]
     match client.runtime_api().contract_class_hash_by_address(block_hash, address) {
         Ok(class_hash) => return Ok(!class_hash.eq(&ClassHash::default())),
         Err(e) => Err(Error::Other(e.to_string())),
     }
 }
 
-pub fn decode_011_diff<B, C>(
-    encoded_diff: &mut Vec<U256>,
-    block_hash: B::Hash,
-    client: Arc<C>,
-) -> Result<StateDiff, Error>
+pub fn decode_011_diff<B, C>(encoded_diff: &Vec<U256>, block_hash: B::Hash, client: Arc<C>) -> Result<StateDiff, Error>
 where
     B: BlockT,
     C: ProvideRuntimeApi<B> + HeaderBackend<B>,

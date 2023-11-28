@@ -1,13 +1,24 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use ethers::abi::RawLog;
 use ethers::contract::{BaseContract, EthEvent, EthLogDecode};
 use ethers::core::abi::parse_abi;
 use ethers::providers::{Http, Middleware, Provider};
 use ethers::types::{Address, Filter, H256, I256, U256};
+use log::debug;
 use mc_db::L1L2BlockMapping;
+use pallet_starknet::runtime_api::StarknetRuntimeApi;
+use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
+use sp_runtime::generic::BlockId;
+use sp_runtime::traits::Block as BlockT;
 use starknet_api::state::StateDiff;
 
-use crate::{parser, Error, FetchState, StateFetcher};
+use crate::{parser, Error, FetchState, StateFetcher, LOG_TARGET};
+
+const STATE_SEARCH_STEP: u64 = 1;
+const LOG_SEARCH_STEP: u64 = 1000;
 
 #[derive(Debug)]
 pub struct EthOrigin {
@@ -20,7 +31,7 @@ pub struct EthOrigin {
 #[derive(Debug)]
 pub struct StateUpdate {
     eth_origin: EthOrigin,
-    state_update: LogStateUpdate,
+    update: LogStateUpdate,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, EthEvent)]
@@ -66,8 +77,6 @@ pub struct EthereumStateFetcher {
     verifier_contract: Address,
 
     memory_page_contract: Address,
-
-    search_step: u64,
 }
 
 impl EthereumStateFetcher {
@@ -78,7 +87,7 @@ impl EthereumStateFetcher {
         memory_page_contract: Address,
     ) -> Result<Self, Error> {
         let provider = Provider::<Http>::try_from(url).map_err(|e| Error::L1Connection(e.to_string()))?;
-        Ok(Self { http_provider: provider, core_contract, verifier_contract, memory_page_contract, search_step: 1000 })
+        Ok(Self { http_provider: provider, core_contract, verifier_contract, memory_page_contract })
     }
 
     pub(crate) async fn query_state_update(
@@ -89,7 +98,7 @@ impl EthereumStateFetcher {
         let filter = Filter::new().address(self.core_contract).event("LogStateUpdate(uint256,int256,uint256)");
 
         let mut from = eth_from;
-        let mut to = eth_from + self.search_step;
+        let mut to = eth_from + STATE_SEARCH_STEP;
 
         loop {
             let filter = filter.clone().from_block(from).to_block(to);
@@ -111,13 +120,13 @@ impl EthereumStateFetcher {
                                     _transaction_hash: log.transaction_hash.ok_or(Error::L1EventDecode)?,
                                     transaction_index: log.transaction_index.ok_or(Error::L1EventDecode)?.as_u64(),
                                 },
-                                state_update: log_state_update,
+                                update: log_state_update,
                             })
                         })
                 })
                 .filter(|res| {
                     if let Ok(state_update) = res {
-                        if state_update.state_update.block_number.as_u64() < starknet_from {
+                        if state_update.update.block_number.as_u64() < starknet_from {
                             return false;
                         }
                     }
@@ -131,8 +140,8 @@ impl EthereumStateFetcher {
                 }
             }
 
-            from += self.search_step;
-            to += self.search_step;
+            from += LOG_SEARCH_STEP;
+            to += LOG_SEARCH_STEP;
         }
     }
 
@@ -177,7 +186,7 @@ impl EthereumStateFetcher {
     ) -> Result<LogMemoryPagesHashes, Error> {
         let filter = Filter::new().address(self.verifier_contract).event("LogMemoryPagesHashes(bytes32,bytes32[])");
 
-        let mut from = eth_from.saturating_sub(self.search_step);
+        let mut from = eth_from.saturating_sub(LOG_SEARCH_STEP);
         let mut to = eth_from;
 
         loop {
@@ -211,8 +220,8 @@ impl EthereumStateFetcher {
                 return Ok(pages_hashes);
             }
 
-            from = from.saturating_sub(self.search_step);
-            to = to.saturating_sub(self.search_step);
+            from = from.saturating_sub(LOG_SEARCH_STEP);
+            to = to.saturating_sub(LOG_SEARCH_STEP);
         }
     }
 
@@ -225,8 +234,10 @@ impl EthereumStateFetcher {
             .address(self.memory_page_contract)
             .event("LogMemoryPageFactContinuous(bytes32,uint256,uint256)");
 
-        let mut from = eth_from.saturating_sub(self.search_step);
+        let mut from = eth_from.saturating_sub(LOG_SEARCH_STEP);
         let mut to = eth_from;
+
+        let mut match_pages_hashes = Vec::new();
 
         loop {
             if to == 0 {
@@ -251,14 +262,19 @@ impl EthereumStateFetcher {
                     })
                 }
             }
+            match_pages_hashes.push(memory_pages_hashes);
 
             if pages_hashes.len() == 0 {
-                return Ok(memory_pages_hashes);
+                // return Ok(match_pages_hashes);
+                break;
             }
 
-            from = from.saturating_sub(self.search_step);
-            to = to.saturating_sub(self.search_step);
+            from = from.saturating_sub(LOG_SEARCH_STEP);
+            to = to.saturating_sub(LOG_SEARCH_STEP);
         }
+
+        match_pages_hashes.reverse();
+        return Ok(match_pages_hashes.into_iter().flat_map(|v| v).collect());
     }
 
     pub async fn query_and_decode_transaction(&self, hash: H256) -> Result<Vec<U256>, Error> {
@@ -275,33 +291,44 @@ impl EthereumStateFetcher {
             .unwrap(),
         );
 
-        let (_, mut data, _, _, _): (U256, Vec<U256>, U256, U256, U256) =
+        let (_, data, _, _, _): (U256, Vec<U256>, U256, U256, U256) =
             abi.decode("registerContinuousMemoryPage", tx.input.as_ref()).unwrap();
-
-        match parser::decode_pre_011_diff(&mut data, true) {
-            Ok(state_diff) => {
-                // apply_state_diff()
-            }
-            Err(err) => {
-                // handle err
-                panic!("Error converting nonces_value: {:?}", err);
-            }
-        }
-
         Ok(data)
     }
 
-    pub fn temp_decode_interface(&self, _data: Vec<U256>) -> StateDiff {
-        unimplemented!()
+    pub fn decode_state_diff<B, C>(
+        &self,
+        starknet_block_number: u64,
+        data: Vec<U256>,
+        client: Arc<C>,
+    ) -> Result<StateDiff, Error>
+    where
+        B: BlockT,
+        C: ProvideRuntimeApi<B> + HeaderBackend<B>,
+        C::Api: StarknetRuntimeApi<B>,
+    {
+        let block_hash = client
+            .block_hash_from_id(&BlockId::Number((starknet_block_number as u32).saturating_sub(1).into()))
+            .map_err(|_| Error::UnknownBlock)?
+            .unwrap_or_default();
+        parser::decode_011_diff(&data, block_hash, client)
     }
 
-    pub async fn query_state_diff(&self, state_update: &StateUpdate) -> Result<FetchState, Error> {
+    pub async fn query_state_diff<B, C>(&self, state_update: &StateUpdate, client: Arc<C>) -> Result<FetchState, Error>
+    where
+        B: BlockT,
+        C: ProvideRuntimeApi<B> + HeaderBackend<B>,
+        C::Api: StarknetRuntimeApi<B>,
+    {
+        debug!(target: LOG_TARGET,"~~ query state diff for starknet block {:#?}", state_update.update.block_number);
+
         let fact = self
             .query_state_transition_fact(
                 state_update.eth_origin.block_number,
                 state_update.eth_origin.transaction_index,
             )
             .await?;
+
         let pages_hashes = self.query_memory_pages_hashes(state_update.eth_origin.block_number, fact).await?;
 
         let mut pages_hashes =
@@ -313,21 +340,23 @@ impl EthereumStateFetcher {
 
         let mut tx_input_data = Vec::new();
 
-        for log in continuous_logs_with_tx_hash.iter() {
+        for log in &continuous_logs_with_tx_hash[1..] {
+            debug!(target: LOG_TARGET,"~~ decode state diff from tx: {:#?}", log.tx_hash);
+
             let mut data = self.query_and_decode_transaction(log.tx_hash).await?;
             tx_input_data.append(&mut data)
         }
 
-        let state_diff = self.temp_decode_interface(tx_input_data);
+        let state_diff = self.decode_state_diff(state_update.update.block_number.as_u64(), tx_input_data, client)?;
 
         Ok(FetchState {
             l1_l2_block_mapping: L1L2BlockMapping {
                 l1_block_hash: state_update.eth_origin.block_hash,
                 l1_block_number: state_update.eth_origin.block_number,
-                l2_block_hash: state_update.state_update.block_hash,
-                l2_block_number: state_update.state_update.block_number.as_u64(),
+                l2_block_hash: state_update.update.block_hash,
+                l2_block_number: state_update.update.block_number.as_u64(),
             },
-            post_state_root: state_update.state_update.global_root,
+            post_state_root: state_update.update.global_root,
             state_diff,
         })
     }
@@ -335,12 +364,18 @@ impl EthereumStateFetcher {
 
 #[async_trait]
 impl StateFetcher for EthereumStateFetcher {
-    async fn state_diff(&self, l1_from: u64, l2_start: u64) -> Result<Vec<FetchState>, Error> {
+    async fn state_diff<B, C>(&self, l1_from: u64, l2_start: u64, client: Arc<C>) -> Result<Vec<FetchState>, Error>
+    where
+        B: BlockT,
+        C: ProvideRuntimeApi<B> + HeaderBackend<B>,
+        C::Api: StarknetRuntimeApi<B>,
+    {
         let state_updates = self.query_state_update(l1_from, l2_start).await?;
 
         let tasks = state_updates.iter().map(|updates| {
+            let client_clone = client.clone();
             let fetcher = self;
-            async move { fetcher.query_state_diff(updates).await }
+            async move { fetcher.query_state_diff(updates, client_clone).await }
         });
 
         let fetched_states = futures::future::join_all(tasks).await;

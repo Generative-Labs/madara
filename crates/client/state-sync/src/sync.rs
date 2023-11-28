@@ -50,10 +50,6 @@ where
     pub fn apply_state_diff(&self, starknet_block_number: u64, state_diff: &StateDiff) -> Result<(), Error> {
         let mut inner_state_diff = InnerStateDiff::default();
 
-        // for (k, v) in state_diff.declared_classes.iter(){
-        //     inner_state_diff.declared_classes.insert(k.clone(),v.1.clone());
-        // }
-
         for (contract_address, class_hash) in state_diff.deployed_contracts.iter() {
             inner_state_diff.commitment.address_to_class_hash.insert(*contract_address, *class_hash);
         }

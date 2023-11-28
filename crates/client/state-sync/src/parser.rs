@@ -14,6 +14,7 @@ use starknet_api::state::{ContractClass, StateDiff, StorageKey};
 
 use crate::Error;
 
+#[allow(dead_code)]
 const NUM_STORAGE_UPDATES_WIDTH: u64 = 64; // Adjust this based on your logic
 
 /// Usually in starknet, some types like ClassHash and ContractClass can be directly converted from
@@ -122,6 +123,7 @@ where
     })
 }
 
+#[allow(dead_code)]
 pub fn decode_pre_011_diff(encoded_diff: &mut Vec<U256>, with_constructor_args: bool) -> Result<StateDiff, Error> {
     let mut offset = 0;
     let num_deployments_cells = encoded_diff[offset].as_usize();

@@ -6,17 +6,22 @@ mod sync;
 mod tests;
 
 use std::cmp::Ordering;
+use std::fmt;
+use std::fs::File;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use ethers::types::{H256, U256};
+use ethereum::EthereumStateFetcher;
+use ethers::types::{Address, H256, U256};
 use futures::channel::mpsc;
 use futures::prelude::*;
 use log::error;
 use mc_db::L1L2BlockMapping;
 use pallet_starknet::runtime_api::StarknetRuntimeApi;
 use sc_client_api::backend::Backend;
+use serde::Deserialize;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_runtime::generic::Header as GenericHeader;
@@ -25,6 +30,36 @@ use starknet_api::state::StateDiff;
 use sync::StateWriter;
 
 const LOG_TARGET: &'static str = "state-sync";
+
+// StateSyncConfig defines the parameters to start the task of syncing states from L1.
+#[derive(Clone, PartialEq, Deserialize, Debug)]
+pub struct StateSyncConfig {
+    // The block from which syncing starts on L1.
+    pub l1_start: u64,
+    // The address of core contract on L1.
+    pub core_contract: String,
+    // The address of verifier contract on L1.
+    pub verifier_contract: String,
+    // The address of memory page contract on L1.
+    pub memory_page_contract: String,
+    // The block from which syncing starts on L2.
+    pub l2_start: u64,
+    // The RPC url for L1.
+    pub l1_url: String,
+    // The number of blocks to query from L1 each time.
+    pub fetch_block_step: String,
+    // The time interval for each query.
+    pub fetch_interval: u64,
+}
+
+impl TryFrom<&PathBuf> for StateSyncConfig {
+    type Error = String;
+
+    fn try_from(path: &PathBuf) -> Result<Self, Self::Error> {
+        let file = File::open(path).map_err(|e| format!("error opening da config: {e}"))?;
+        serde_json::from_reader(file).map_err(|e| format!("error parsing da config: {e}"))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchState {
@@ -52,6 +87,33 @@ pub trait StateFetcher {
         B: BlockT,
         C: ProvideRuntimeApi<B> + HeaderBackend<B>,
         C::Api: StarknetRuntimeApi<B>;
+}
+
+pub fn create_and_run<B, C, BE>(
+    config_path: PathBuf,
+    madara_backend: Arc<mc_db::Backend<B>>,
+    substrate_client: Arc<C>,
+    substrate_backend: Arc<BE>,
+) -> Result<impl Future<Output = ()> + Send, Error>
+where
+    B: BlockT<Hash = H256, Header = GenericHeader<u32, BlakeTwo256>>,
+    C: HeaderBackend<B> + ProvideRuntimeApi<B> + 'static,
+    C::Api: StarknetRuntimeApi<B>,
+    BE: Backend<B> + 'static,
+{
+    let state_sync_config = StateSyncConfig::try_from(&config_path).map_err(|e| Error::Other(e.to_string()))?;
+    let contract_address =
+        state_sync_config.core_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
+    let verifier_address =
+        state_sync_config.verifier_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
+    let memory_page_address =
+        state_sync_config.memory_page_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
+
+    let state_fetcher =
+        EthereumStateFetcher::new(state_sync_config.l1_url, contract_address, verifier_address, memory_page_address)?;
+    let state_fetcher = Arc::new(state_fetcher);
+
+    run(state_fetcher, madara_backend, substrate_client, substrate_backend)
 }
 
 // TODO pass a config then create state_fetcher
@@ -157,4 +219,20 @@ pub enum Error {
     L1StateError(String),
     TypeError(String),
     Other(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::AlreadyInChain => write!(f, "Already in chain"),
+            Error::UnknownBlock => write!(f, "Unknown block"),
+            Error::ConstructTransaction(msg) => write!(f, "Error constructing transaction: {}", msg),
+            Error::CommitStorage(msg) => write!(f, "Error committing storage: {}", msg),
+            Error::L1Connection(msg) => write!(f, "L1 connection error: {}", msg),
+            Error::L1EventDecode => write!(f, "Error decoding L1 event"),
+            Error::L1StateError(msg) => write!(f, "L1 state error: {}", msg),
+            Error::TypeError(msg) => write!(f, "Type error: {}", msg),
+            Error::Other(msg) => write!(f, "Other error: {}", msg),
+        }
+    }
 }

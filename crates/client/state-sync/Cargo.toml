@@ -13,6 +13,11 @@ async-trait = { workspace = true }
 indexmap = { workspace = true }
 hashbrown = { workspace = true }
 log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
 
 # Madara
 mp-hashers = { workspace = true, default-features = true }
@@ -24,6 +29,8 @@ mp-storage = { workspace = true  }
 mc-db = { workspace = true }
 mc-mapping-sync = { workspace = true }
 madara-runtime = { workspace = true }
+pallet-starknet = { workspace = true }
+mp-felt = { workspace = true, features = ["parity-scale-codec", "serde"] }
 
 # Starknet
 blockifier = { workspace = true, default-features = true }
@@ -44,10 +51,6 @@ ethers = "2.0.11"
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
-serde_json = { workspace = true, features = [
-    "arbitrary_precision",
-    "raw_value",
-] }
 
 # Substrate
 sc-block-builder = { workspace = true }
@@ -61,8 +64,6 @@ starknet-core = { workspace = true }
 starknet-crypto = { workspace = true, features = ["alloc"] }
 
 # Madara
-pallet-starknet = { workspace = true }
-mp-felt = { workspace = true, features = ["parity-scale-codec", "serde"] }
 mp-transactions = { workspace = true }
 
 const-decoder = "0.3.0"

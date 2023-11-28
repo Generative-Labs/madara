@@ -370,6 +370,7 @@ impl StateFetcher for EthereumStateFetcher {
         C: ProvideRuntimeApi<B> + HeaderBackend<B>,
         C::Api: StarknetRuntimeApi<B>,
     {
+        debug!(target: LOG_TARGET, "state_diff {} {}", l1_from, l2_start);
         let state_updates = self.query_state_update(l1_from, l2_start).await?;
 
         let tasks = state_updates.iter().map(|updates| {

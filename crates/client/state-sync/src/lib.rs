@@ -90,17 +90,23 @@ where
         }
 
         loop {
-            if let Ok(mut fetched_states) =
-                state_fetcher_clone.state_diff(eth_start_height, starknet_start_height, substrate_client.clone()).await
+            match state_fetcher_clone
+                .state_diff(eth_start_height, starknet_start_height, substrate_client.clone())
+                .await
             {
-                fetched_states.sort();
+                Ok(mut fetched_states) => {
+                    fetched_states.sort();
 
-                if let Some(last) = fetched_states.last() {
-                    eth_start_height = last.l1_l2_block_mapping.l1_block_number + 1;
-                    starknet_start_height = last.l1_l2_block_mapping.l2_block_number + 1;
+                    if let Some(last) = fetched_states.last() {
+                        eth_start_height = last.l1_l2_block_mapping.l1_block_number + 1;
+                        starknet_start_height = last.l1_l2_block_mapping.l2_block_number + 1;
+                    }
+
+                    let _res = tx.send(fetched_states).await;
                 }
-
-                let _res = tx.send(fetched_states).await;
+                Err(e) => {
+                    error!(target: LOG_TARGET, "fetch state diff from l1 has error {:#?}", e);
+                }
             }
             tokio::time::sleep(Duration::from_secs(5)).await;
         }

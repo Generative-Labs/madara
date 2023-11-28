@@ -23,7 +23,6 @@ async fn test_fetch_and_decode_state_diff() {
     let (madara_client, _) = create_test_client();
 
     let result = fetcher.state_diff(l1_from, l2_start, Arc::new(madara_client)).await.unwrap();
-    println!("{:#?}", result.last().unwrap().l1_l2_block_mapping);
     assert!(!result.is_empty());
 }
 

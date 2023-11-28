@@ -15,9 +15,6 @@ async fn test_fetch_and_decode_state_diff() {
     let url = String::from("https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH");
     let fetcher = EthereumStateFetcher::new(url, contract_address, verifier_address, memory_page_address).unwrap();
 
-    // This is the Ethereum block on the Goerli test network where the first 'update state'
-    // transaction of the StarkNet contract occurred, along with the initial height of the StarkNet
-    // itself.
     let l1_from = 9064758;
     let l2_start = 809819;
 

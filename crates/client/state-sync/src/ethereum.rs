@@ -17,7 +17,7 @@ use starknet_api::state::StateDiff;
 
 use crate::{parser, Error, FetchState, StateFetcher, LOG_TARGET};
 
-const STATE_SEARCH_STEP: u64 = 1;
+const STATE_SEARCH_STEP: u64 = 10;
 const LOG_SEARCH_STEP: u64 = 1000;
 
 #[derive(Debug)]

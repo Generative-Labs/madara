@@ -7,6 +7,7 @@ use frame_support::{Identity, StorageHasher};
 #[cfg(not(feature = "std"))]
 use hashbrown::hash_map::DefaultHashBuilder as HasherBuilder;
 use indexmap::IndexMap;
+use log::debug;
 use madara_runtime::{Block as SubstrateBlock, Header as SubstrateHeader};
 use mc_db::MappingCommitment;
 use mc_rpc_core::utils::get_block_by_block_hash;
@@ -28,7 +29,7 @@ use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonc
 use starknet_api::hash::StarkFelt;
 use starknet_api::state::{StateDiff, StorageKey as StarknetStorageKey};
 
-use crate::{u256_to_h256, Error};
+use crate::{u256_to_h256, Error, LOG_TARGET};
 
 pub struct StateWriter<B: BlockT, C, BE> {
     client: Arc<C>,

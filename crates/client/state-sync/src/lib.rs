@@ -6,7 +6,6 @@ mod sync;
 mod tests;
 
 use std::cmp::Ordering;
-use std::fmt;
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -56,8 +55,8 @@ impl TryFrom<&PathBuf> for StateSyncConfig {
     type Error = String;
 
     fn try_from(path: &PathBuf) -> Result<Self, Self::Error> {
-        let file = File::open(path).map_err(|e| format!("error opening da config: {e}"))?;
-        serde_json::from_reader(file).map_err(|e| format!("error parsing da config: {e}"))
+        let file = File::open(path).map_err(|e| format!("error opening state sync config: {e}"))?;
+        serde_json::from_reader(file).map_err(|e| format!("error parsing state sync config: {e}"))
     }
 }
 
@@ -115,7 +114,7 @@ where
         EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list)?;
     let state_fetcher = Arc::new(state_fetcher);
 
-    run(state_fetcher, madara_backend, substrate_client, substrate_backend)
+    Ok(run(state_fetcher, madara_backend, substrate_client, substrate_backend))
 }
 
 // TODO pass a config then create state_fetcher
@@ -124,7 +123,7 @@ pub fn run<B, C, BE, SF>(
     madara_backend: Arc<mc_db::Backend<B>>,
     substrate_client: Arc<C>,
     substrate_backend: Arc<BE>,
-) -> Result<impl Future<Output = ()> + Send, Error>
+) -> impl Future<Output = ()> + Send
 where
     B: BlockT<Hash = H256, Header = GenericHeader<u32, BlakeTwo256>>,
     C: HeaderBackend<B> + ProvideRuntimeApi<B> + 'static,
@@ -158,6 +157,10 @@ where
             match state_fetcher_clone.state_diff(eth_from_height, starknet_start_height, substrate_client.clone()).await
             {
                 Ok(mut fetched_states) => {
+                    if fetched_states.is_empty() {
+                        eth_from_height += 10;
+                        continue;
+                    }
                     fetched_states.sort();
 
                     if let Some(last) = fetched_states.last() {
@@ -188,7 +191,7 @@ where
 
                 if let Some(last) = fetched_states.last() {
                     if let Err(e) = madara_backend.meta().write_last_l1_l2_mapping(&last.l1_l2_block_mapping) {
-                        error!(target: LOG_TARGET, "write to madara backend has error {}", e);
+                        error!(target: LOG_TARGET, "write to madara backend has error {:#?}", e);
                         break;
                     }
                 }
@@ -196,9 +199,7 @@ where
         }
     };
 
-    let task = future::select(Box::pin(fetcher_task), Box::pin(state_write_task)).map(|_| ());
-
-    Ok(task)
+    future::select(Box::pin(fetcher_task), Box::pin(state_write_task)).map(|_| ())
 }
 
 fn u256_to_h256(u256: U256) -> H256 {
@@ -220,20 +221,4 @@ pub enum Error {
     L1StateError(String),
     TypeError(String),
     Other(String),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::AlreadyInChain => write!(f, "Already in chain"),
-            Error::UnknownBlock => write!(f, "Unknown block"),
-            Error::ConstructTransaction(msg) => write!(f, "Error constructing transaction: {}", msg),
-            Error::CommitStorage(msg) => write!(f, "Error committing storage: {}", msg),
-            Error::L1Connection(msg) => write!(f, "L1 connection error: {}", msg),
-            Error::L1EventDecode => write!(f, "Error decoding L1 event"),
-            Error::L1StateError(msg) => write!(f, "L1 state error: {}", msg),
-            Error::TypeError(msg) => write!(f, "Type error: {}", msg),
-            Error::Other(msg) => write!(f, "Other error: {}", msg),
-        }
-    }
 }

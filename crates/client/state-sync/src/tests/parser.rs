@@ -13,7 +13,7 @@ macro_rules! u256_array {
 }
 
 #[test]
-fn test_decode_pre_011_diff_v2() {
+fn test_decode_pre_011_diff() {
     // the test data is from starknet docs: https://docs.starknet.io/documentation/architecture_and_concepts/Network_Architecture/on-chain-data/#data_availability_pre_v0_11_0
     let data = u256_array![
         "2",
@@ -102,7 +102,7 @@ fn test_decode_pre_011_diff_v2() {
 }
 
 #[test]
-fn test_decode_011_diff_v2() {
+fn test_decode_011_diff() {
     // the test data is from starknet docs: https://docs.starknet.io/documentation/architecture_and_concepts/Network_Architecture/on-chain-data/#data_availability_post_v0_11_0
     let data = u256_array![
         "1",

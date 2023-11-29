@@ -14,10 +14,7 @@ async fn test_fetch_and_decode_state_diff() {
     let verifier_address = "0xb59D5F625b63fbb04134213A526AA3762555B853".parse::<Address>().unwrap();
     let memory_page_address = "0xdc1534eeBF8CEEe76E31C98F5f5e0F9979476c87".parse::<Address>().unwrap();
 
-    let eth_url_list = vec![
-        String::from("https://eth.llamarpc.com"),
-        String::from("https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH"),
-    ];
+    let eth_url_list = vec![String::from("https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH")];
     let fetcher =
         EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list).unwrap();
 
@@ -36,10 +33,7 @@ async fn test_sync_state_diff_from_l1() {
     let verifier_address = "0xb59D5F625b63fbb04134213A526AA3762555B853".parse::<Address>().unwrap();
     let memory_page_address = "0xdc1534eeBF8CEEe76E31C98F5f5e0F9979476c87".parse::<Address>().unwrap();
 
-    let eth_url_list = vec![
-        // String::from("https://eth.llamarpc.com"),
-        String::from("https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH"),
-    ];
+    let eth_url_list = vec![String::from("https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH")];
     let fetcher =
         EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list).unwrap();
     let fetcher = Arc::new(fetcher);
@@ -59,7 +53,7 @@ async fn test_sync_state_diff_from_l1() {
         .unwrap();
 
     let madara_backend_clone = madara_backend.clone();
-    let task = run(fetcher, madara_backend_clone.clone(), madara_client, backend).unwrap();
+    let task = run(fetcher, madara_backend_clone.clone(), madara_client, backend);
 
     tokio::spawn(task);
 

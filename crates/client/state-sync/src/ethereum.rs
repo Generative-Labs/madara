@@ -13,7 +13,6 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use starknet_api::state::StateDiff;
 use tokio::time::sleep;
-// use tokio_retry::strategy::ExponentialBackoff;
 
 use super::*;
 
@@ -106,8 +105,6 @@ impl EthereumStateFetcher {
     }
 
     pub async fn get_logs_retry(&self, filter: &Filter) -> Result<Vec<Log>, Error> {
-        // let _strategy = ExponentialBackoff::from_millis(100).max_delay(Duration::from_secs(10)).factor(2); //NonZeroU64::new(10).unwrap()
-
         let mut retries = 0;
         loop {
             let provider = self
@@ -119,7 +116,6 @@ impl EthereumStateFetcher {
                 })
                 .map_err(|e| Error::Other(e.to_string()))??;
 
-            // drop(current_index);
             match provider.get_logs(&filter).await {
                 Ok(logs) => return Ok(logs),
                 Err(_e) => {
@@ -133,12 +129,9 @@ impl EthereumStateFetcher {
                         *index = (*index + 1) % self.eth_url_list.len();
                     };
 
-                    // self.current_provider_index = (self.current_provider_index + 1) % self.eth_url_list.len();
-
                     // Calculate the wait time manually
                     let wait_time = self.calculate_backoff(retries);
 
-                    println!("===== Retry #{}: Waiting for {:?} seconds", retries, wait_time);
                     sleep(wait_time).await;
                 }
             }
@@ -176,8 +169,7 @@ impl EthereumStateFetcher {
 
             let updates: Result<Vec<StateUpdate>, Error> = self
                 .get_logs_retry(&filter)
-                .await
-                .map_err(|e| Error::L1Connection(e.to_string()))?
+                .await?
                 .iter()
                 .map(|log| {
                     <LogStateUpdate as EthLogDecode>::decode_log(&(log.topics.clone(), log.data.to_vec()).into())
@@ -205,7 +197,7 @@ impl EthereumStateFetcher {
                 .collect();
 
             if let Ok(remind_state_updates) = updates {
-                if remind_state_updates.is_empty() {
+                if !remind_state_updates.is_empty() {
                     return Ok(remind_state_updates);
                 }
             }
@@ -227,8 +219,7 @@ impl EthereumStateFetcher {
             .to_block(eth_from);
 
         self.get_logs_retry(&filter)
-            .await
-            .map_err(|e| Error::L1Connection(e.to_string()))?
+            .await?
             .iter()
             .find(|log| {
                 if let Some(index) = log.transaction_index {
@@ -266,8 +257,7 @@ impl EthereumStateFetcher {
 
             let res = self
                 .get_logs_retry(&filter)
-                .await
-                .map_err(|e| Error::L1Connection(e.to_string()))?
+                .await?
                 .iter()
                 .find_map(|log| {
                     match <LogMemoryPagesHashes as EthLogDecode>::decode_log(
@@ -313,7 +303,7 @@ impl EthereumStateFetcher {
             }
             let filter = filter.clone().from_block(from).to_block(to);
 
-            let logs = self.get_logs_retry(&filter).await.map_err(|e| Error::L1Connection(e.to_string()))?;
+            let logs = self.get_logs_retry(&filter).await?;
             let mut memory_pages_hashes = Vec::new();
 
             for l in logs.iter() {
@@ -341,7 +331,8 @@ impl EthereumStateFetcher {
         }
 
         match_pages_hashes.reverse();
-        return Ok(match_pages_hashes.into_iter().flat_map(|v| v).collect());
+
+        Ok(match_pages_hashes.into_iter().flatten().collect())
     }
 
     pub async fn query_and_decode_transaction(&self, hash: H256) -> Result<Vec<U256>, Error> {

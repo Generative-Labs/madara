@@ -437,7 +437,7 @@ pub fn new_full(
             "sync-from-l1",
             Some("madara"),
             mc_state_sync::create_and_run(state_sync_conf_path, madara_backend, client.clone(), backend.clone())
-                .map_err(|e| ServiceError::Other(e.to_string()))?,
+                .map_err(|e| ServiceError::Other(format!("crate sync from l1 task failed, error: {:#?}", e)))?,
         );
     }
 

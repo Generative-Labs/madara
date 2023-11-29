@@ -1,10 +1,15 @@
+use std::future::Future;
+use std::num::{NonZeroU64, NonZeroUsize};
+use std::result::Result;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
 use async_trait::async_trait;
 use ethers::abi::RawLog;
 use ethers::contract::{BaseContract, EthEvent, EthLogDecode};
 use ethers::core::abi::parse_abi;
 use ethers::providers::{Http, Middleware, Provider};
-use ethers::types::{Address, Filter, H256, I256, U256, Log};
+use ethers::types::{Address, Filter, Log, H256, I256, U256};
 use log::debug;
 use mc_db::L1L2BlockMapping;
 use pallet_starknet::runtime_api::StarknetRuntimeApi;
@@ -13,14 +18,8 @@ use sp_blockchain::HeaderBackend;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use starknet_api::state::StateDiff;
-use tokio_retry::strategy::ExponentialBackoff;
-use std::{
-	future::Future,
-	num::{NonZeroU64, NonZeroUsize},
-	result::Result,
-	time::Duration,
-};
 use tokio::time::sleep;
+use tokio_retry::strategy::ExponentialBackoff;
 
 use crate::{parser, Error, FetchState, StateFetcher, LOG_TARGET};
 
@@ -76,7 +75,7 @@ pub struct LogMemoryPageFactContinuousWithTxHash {
     pub tx_hash: H256,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct EthereumStateFetcher {
     http_provider: Provider<Http>,
 
@@ -86,9 +85,9 @@ pub struct EthereumStateFetcher {
 
     memory_page_contract: Address,
 
-	eth_url_list: Vec<String>,  // Ethereum Node URL List
+    eth_url_list: Vec<String>, // Ethereum Node URL List
 
-	current_provider_index: Arc<Mutex<usize>> ,
+    current_provider_index: Mutex<usize>,
 }
 
 impl EthereumStateFetcher {
@@ -96,72 +95,80 @@ impl EthereumStateFetcher {
         core_contract: Address,
         verifier_contract: Address,
         memory_page_contract: Address,
-		eth_url_list: Vec<String>,
+        eth_url_list: Vec<String>,
     ) -> Result<Self, Error> {
-		let current_provider_index = 0;
-		let provider = Provider::<Http>::try_from(eth_url_list[current_provider_index].clone())
-			.map_err(|e| Error::L1Connection(e.to_string()))?;
+        let current_provider_index = 0;
+        let provider = Provider::<Http>::try_from(eth_url_list[current_provider_index].clone())
+            .map_err(|e| Error::L1Connection(e.to_string()))?;
 
-        Ok(Self { http_provider: provider, core_contract, verifier_contract,
-			memory_page_contract, eth_url_list, current_provider_index:Arc::new(Mutex::new(current_provider_index))})
+        Ok(Self {
+            http_provider: provider,
+            core_contract,
+            verifier_contract,
+            memory_page_contract,
+            eth_url_list,
+            current_provider_index: Mutex::new(current_provider_index),
+        })
     }
 
-	pub async fn get_logs_retry(&mut self, filter: &Filter) -> Result<Vec<Log>, Error> {
-		let strategy = ExponentialBackoff::from_millis(100)
-			.max_delay(Duration::from_secs(10))
-			.factor(2); //NonZeroU64::new(10).unwrap()
+    pub async fn get_logs_retry(&self, filter: &Filter) -> Result<Vec<Log>, Error> {
+        let strategy = ExponentialBackoff::from_millis(100).max_delay(Duration::from_secs(10)).factor(2); //NonZeroU64::new(10).unwrap()
 
-		let mut retries = 0;
-		loop {
-			let current_index = self.current_provider_index.lock().map_err(|e| Error::Other(e.to_string()))?;
+        let mut retries = 0;
+        loop {
+            let provider = self
+                .current_provider_index
+                .lock()
+                .map(|index| {
+                    let current_provider_url = &self.eth_url_list[*index];
+                    Provider::<Http>::try_from(current_provider_url).map_err(|e| Error::L1Connection(e.to_string()))
+                })
+                .map_err(|e| Error::Other(e.to_string()))??;
 
-			let current_provider_url = &self.eth_url_list[*current_index];
-			let provider = Provider::<Http>::try_from(current_provider_url)
-				.map_err(|e| Error::L1Connection(e.to_string()))?;
+            // drop(current_index);
+            match provider.get_logs(&filter).await {
+                Ok(logs) => return Ok(logs),
+                Err(e) => {
+                    retries += 1;
+                    if retries > self.eth_url_list.len() {
+                        return Err(Error::L1Connection("All Ethereum nodes failed.".to_string()));
+                    }
 
-			match provider.get_logs(&filter).await {
-				Ok(logs) => return Ok(logs),
-				Err(e) => {
-					retries += 1;
-					if retries > self.eth_url_list.len() {
-						return Err(Error::L1Connection("All Ethereum nodes failed.".to_string()));
-					}
+                    // change to next Ethereum node
+                    if let Ok(mut index) = self.current_provider_index.lock() {
+                        *index = (*index + 1) % self.eth_url_list.len();
+                    };
 
-					// change to next Ethereum node
-					if let Ok(mut index) = self.current_provider_index.lock(){
-						*index=(*index + 1) % self.eth_url_list.len();
-					};
-					// self.current_provider_index = (self.current_provider_index + 1) % self.eth_url_list.len();
+                    // self.current_provider_index = (self.current_provider_index + 1) % self.eth_url_list.len();
 
-					// Calculate the wait time manually
-					let wait_time = self.calculate_backoff(retries);
+                    // Calculate the wait time manually
+                    let wait_time = self.calculate_backoff(retries);
 
-					println!("===== Retry #{}: Waiting for {:?} seconds", retries, wait_time);
-					sleep(wait_time).await;
-				}
-			}
-		}
-	}
+                    println!("===== Retry #{}: Waiting for {:?} seconds", retries, wait_time);
+                    sleep(wait_time).await;
+                }
+            }
+        }
+    }
 
-	// Custom backoff calculation
-	pub fn calculate_backoff(&self, retries: usize) -> Duration {
-		// A simple exponential backoff with a maximum delay of 10 seconds
-		let base_delay = 1.0; // in seconds
-		let max_delay = 10; // in seconds
-		let exponential_factor:f64 = 2.0;
+    // Custom backoff calculation
+    pub fn calculate_backoff(&self, retries: usize) -> Duration {
+        // A simple exponential backoff with a maximum delay of 10 seconds
+        let base_delay = 1.0; // in seconds
+        let max_delay = 10; // in seconds
+        let exponential_factor: f64 = 2.0;
 
+        // Calculate the backoff using the exponential factor
+        let backoff = (base_delay * exponential_factor.powf(retries as f64)) as u64;
 
-		// Calculate the backoff using the exponential factor
-		let backoff = (base_delay * exponential_factor.powf(retries as f64)) as u64;
+        // Ensure the backoff does not exceed the maximum delay
+        let final_backoff = backoff.min(max_delay);
 
-		// Ensure the backoff does not exceed the maximum delay
-		let final_backoff = backoff.min(max_delay);
-
-		Duration::from_secs(final_backoff)
-	}
+        Duration::from_secs(final_backoff)
+    }
 
     pub(crate) async fn query_state_update(
-        &mut self,
+        &self,
         eth_from: u64,
         starknet_from: u64,
     ) -> Result<Vec<StateUpdate>, Error> {
@@ -215,7 +222,7 @@ impl EthereumStateFetcher {
     }
 
     pub async fn query_state_transition_fact(
-        &mut self,
+        &self,
         eth_from: u64,
         tx_index: u64,
     ) -> Result<LogStateTransitionFact, Error> {
@@ -248,7 +255,7 @@ impl EthereumStateFetcher {
     }
 
     pub async fn query_memory_pages_hashes(
-        &mut self,
+        &self,
         eth_from: u64,
         state_transition_fact: LogStateTransitionFact,
     ) -> Result<LogMemoryPagesHashes, Error> {
@@ -293,7 +300,7 @@ impl EthereumStateFetcher {
     }
 
     pub async fn query_memory_page_fact_continuous_logs(
-        &mut self,
+        &self,
         eth_from: u64,
         pages_hashes: &mut Vec<U256>,
     ) -> Result<Vec<LogMemoryPageFactContinuousWithTxHash>, Error> {
@@ -312,8 +319,7 @@ impl EthereumStateFetcher {
             }
             let filter = filter.clone().from_block(from).to_block(to);
 
-            let logs = self.get_logs_retry
-				(&filter).await.map_err(|e| Error::L1Connection(e.to_string()))?;
+            let logs = self.get_logs_retry(&filter).await.map_err(|e| Error::L1Connection(e.to_string()))?;
             let mut memory_pages_hashes = Vec::new();
 
             for l in logs.iter() {
@@ -382,7 +388,7 @@ impl EthereumStateFetcher {
         parser::decode_011_diff(&data, block_hash, client)
     }
 
-    pub async fn query_state_diff<B, C>(&mut self, state_update: &StateUpdate, client: Arc<C>) -> Result<FetchState, Error>
+    pub async fn query_state_diff<B, C>(&self, state_update: &StateUpdate, client: Arc<C>) -> Result<FetchState, Error>
     where
         B: BlockT,
         C: ProvideRuntimeApi<B> + HeaderBackend<B>,
@@ -443,7 +449,7 @@ impl StateFetcher for EthereumStateFetcher {
 
         let tasks = state_updates.iter().map(|updates| {
             let client_clone = client.clone();
-            let fetcher = self.clone();
+            let fetcher = self;
             async move { fetcher.query_state_diff(updates, client_clone).await }
         });
 

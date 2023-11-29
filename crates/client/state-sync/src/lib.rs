@@ -109,8 +109,12 @@ where
     let memory_page_address =
         state_sync_config.memory_page_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
 
+	let eth_url_list = vec![
+		state_sync_config.l1_url,
+	];
+
     let state_fetcher =
-        EthereumStateFetcher::new(state_sync_config.l1_url, contract_address, verifier_address, memory_page_address)?;
+        EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address,eth_url_list)?;
     let state_fetcher = Arc::new(state_fetcher);
 
     run(state_fetcher, madara_backend, substrate_client, substrate_backend)
@@ -134,7 +138,7 @@ where
 
     let state_writer = StateWriter::new(substrate_client.clone(), substrate_backend, madara_backend.clone());
     let state_writer = Arc::new(state_writer);
-    let state_fetcher_clone = state_fetcher.clone();
+    let mut state_fetcher_clone = state_fetcher.clone();
 
     let madara_backend_clone = madara_backend.clone();
     let fetcher_task = async move {

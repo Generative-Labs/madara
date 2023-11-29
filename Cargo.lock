@@ -13517,6 +13517,7 @@ dependencies = [
  "tempfile",
  "test-case",
  "tokio",
+ "tokio-retry",
 ]
 
 [[package]]

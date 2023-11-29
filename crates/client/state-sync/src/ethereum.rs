@@ -1,5 +1,4 @@
-use std::future::Future;
-use std::num::{NonZeroU64, NonZeroUsize};
+// use std::num::{NonZeroU64, NonZeroUsize};
 use std::result::Result;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -19,7 +18,7 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use starknet_api::state::StateDiff;
 use tokio::time::sleep;
-use tokio_retry::strategy::ExponentialBackoff;
+// use tokio_retry::strategy::ExponentialBackoff;
 
 use crate::{parser, Error, FetchState, StateFetcher, LOG_TARGET};
 
@@ -112,7 +111,7 @@ impl EthereumStateFetcher {
     }
 
     pub async fn get_logs_retry(&self, filter: &Filter) -> Result<Vec<Log>, Error> {
-        let strategy = ExponentialBackoff::from_millis(100).max_delay(Duration::from_secs(10)).factor(2); //NonZeroU64::new(10).unwrap()
+        // let _strategy = ExponentialBackoff::from_millis(100).max_delay(Duration::from_secs(10)).factor(2); //NonZeroU64::new(10).unwrap()
 
         let mut retries = 0;
         loop {
@@ -128,7 +127,7 @@ impl EthereumStateFetcher {
             // drop(current_index);
             match provider.get_logs(&filter).await {
                 Ok(logs) => return Ok(logs),
-                Err(e) => {
+                Err(_e) => {
                     retries += 1;
                     if retries > self.eth_url_list.len() {
                         return Err(Error::L1Connection("All Ethereum nodes failed.".to_string()));

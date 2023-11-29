@@ -136,7 +136,7 @@ where
 
     let state_writer = StateWriter::new(substrate_client.clone(), substrate_backend, madara_backend.clone());
     let state_writer = Arc::new(state_writer);
-    let mut state_fetcher_clone = state_fetcher.clone();
+    let state_fetcher_clone = state_fetcher.clone();
 
     let madara_backend_clone = madara_backend.clone();
     let fetcher_task = async move {

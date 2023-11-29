@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ethers::types::{Address, Filter, H256};
+use ethers::types::{Address, Filter, H256, U256};
 use mc_db::L1L2BlockMapping;
 
 use crate::ethereum::EthereumStateFetcher;
@@ -91,7 +91,7 @@ async fn test_get_logs_retry() {
         String::from("https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH"),
     ];
 
-    let mut client =
+    let client =
         EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list).unwrap();
     let filter = Filter::new().address(contract_address).event("LogStateUpdate(uint256,int256,uint256)");
 

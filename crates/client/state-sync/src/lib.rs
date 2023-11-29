@@ -29,7 +29,7 @@ use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
 use starknet_api::state::StateDiff;
 use sync::StateWriter;
 
-const LOG_TARGET: &'static str = "state-sync";
+const LOG_TARGET: &str = "state-sync";
 
 // StateSyncConfig defines the parameters to start the task of syncing states from L1.
 #[derive(Clone, PartialEq, Deserialize, Debug)]
@@ -138,29 +138,28 @@ where
 
     let madara_backend_clone = madara_backend.clone();
     let fetcher_task = async move {
-        let mut eth_start_height = 0u64;
-        let mut starknet_start_height = 0u64;
+        let mut eth_from_height: u64;
+        let mut starknet_start_height: u64;
 
-        let l1_l2_mapping = madara_backend_clone.clone().meta().last_l1_l2_mapping();
-
-        match l1_l2_mapping {
+        match madara_backend_clone.clone().meta().last_l1_l2_mapping() {
             Ok(mapping) => {
-                eth_start_height = mapping.l1_block_number + 1;
+                eth_from_height = mapping.l1_block_number + 1;
                 starknet_start_height = mapping.l2_block_number + 1;
             }
-            Err(_) => {}
+            Err(e) => {
+                error!(target: LOG_TARGET, "read last l1 l2 mapping failed, error {:#?}.", e);
+                return;
+            }
         }
 
         loop {
-            match state_fetcher_clone
-                .state_diff(eth_start_height, starknet_start_height, substrate_client.clone())
-                .await
+            match state_fetcher_clone.state_diff(eth_from_height, starknet_start_height, substrate_client.clone()).await
             {
                 Ok(mut fetched_states) => {
                     fetched_states.sort();
 
                     if let Some(last) = fetched_states.last() {
-                        eth_start_height = last.l1_l2_block_mapping.l1_block_number + 1;
+                        eth_from_height = last.l1_l2_block_mapping.l1_block_number + 1;
                         starknet_start_height = last.l1_l2_block_mapping.l2_block_number + 1;
                     }
 

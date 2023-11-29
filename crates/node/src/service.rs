@@ -436,7 +436,7 @@ pub fn new_full(
         task_manager.spawn_essential_handle().spawn(
             "sync-from-l1",
             Some("madara"),
-            state_sync::create_and_run(state_sync_conf_path, madara_backend, client.clone(), backend.clone())
+            mc_state_sync::create_and_run(state_sync_conf_path, madara_backend, client.clone(), backend.clone())
                 .map_err(|e| ServiceError::Other(e.to_string()))?,
         );
     }

@@ -1,9 +1,12 @@
 [package]
-name = "state-sync"
-authors.workspace = true
+name = "mc-state-sync"
+version = "0.1.0"
+description = "Sync state from L1."
+homepage = "https://github.com/keep-starknet-strange/madara"
 edition.workspace = true
-repository.workspace = true
-version.workspace = true
+license = "MIT"
+publish = false
+repository = "https://github.com/keep-starknet-strange/madara"
 
 [dependencies]
 tokio = { workspace = true, features = ["macros", "test-util", "rt-multi-thread"] }
@@ -37,6 +40,7 @@ blockifier = { workspace = true, default-features = true }
 starknet_api = { workspace = true }
 
 # Substrate
+frame-support = { workspace = true }
 sp-runtime = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-state-machine = { workspace = true }
@@ -44,7 +48,6 @@ sp-core = { workspace = true }
 sp-api = { workspace = true }
 sc-client-api = { workspace = true }
 sc-client-db = { workspace = true }
-frame-support = { worksapce = true }
 
 # Ethereum
 ethers = "2.0.11"

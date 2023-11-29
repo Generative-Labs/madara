@@ -1,21 +1,12 @@
-use std::sync::Arc;
-
-use async_trait::async_trait;
 use ethers::abi::RawLog;
 use ethers::contract::{BaseContract, EthEvent, EthLogDecode};
 use ethers::core::abi::parse_abi;
 use ethers::providers::{Http, Middleware, Provider};
-use ethers::types::{Address, Filter, H256, I256, U256};
+use ethers::types::{Filter, I256};
 use log::debug;
-use mc_db::L1L2BlockMapping;
-use pallet_starknet::runtime_api::StarknetRuntimeApi;
-use sp_api::ProvideRuntimeApi;
-use sp_blockchain::HeaderBackend;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::Block as BlockT;
-use starknet_api::state::StateDiff;
 
-use crate::{parser, Error, FetchState, StateFetcher, LOG_TARGET};
+use super::*;
 
 const STATE_SEARCH_STEP: u64 = 10;
 const LOG_SEARCH_STEP: u64 = 1000;
@@ -134,9 +125,9 @@ impl EthereumStateFetcher {
                 })
                 .collect();
 
-            if let Ok(res) = updates {
-                if res.len() > 0 {
-                    return Ok(res);
+            if let Ok(remind_state_updates) = updates {
+                if remind_state_updates.is_empty() {
+                    return Ok(remind_state_updates);
                 }
             }
 
@@ -264,8 +255,7 @@ impl EthereumStateFetcher {
             }
             match_pages_hashes.push(memory_pages_hashes);
 
-            if pages_hashes.len() == 0 {
-                // return Ok(match_pages_hashes);
+            if pages_hashes.is_empty() {
                 break;
             }
 

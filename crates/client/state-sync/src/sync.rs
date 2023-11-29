@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use blockifier::execution::contract_class::ContractClass;
 use blockifier::state::cached_state::CommitmentStateDiff;
@@ -21,15 +20,15 @@ use mp_storage::{
 use sc_client_api::backend::NewBlockState::Best;
 use sc_client_api::backend::{Backend, BlockImportOperation};
 use sp_blockchain::{HeaderBackend, Info};
-use sp_core::{Decode, Encode, H256, U256};
+use sp_core::{Decode, Encode};
 use sp_runtime::generic::{Digest, DigestItem, Header as GenericHeader};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
+use sp_runtime::traits::BlakeTwo256;
 use sp_state_machine::{OverlayedChanges, StorageKey, StorageValue};
 use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonce, PatriciaKey};
 use starknet_api::hash::StarkFelt;
-use starknet_api::state::{StateDiff, StorageKey as StarknetStorageKey};
+use starknet_api::state::StorageKey as StarknetStorageKey;
 
-use crate::{u256_to_h256, Error, LOG_TARGET};
+use super::*;
 
 pub struct StateWriter<B: BlockT, C, BE> {
     client: Arc<C>,
@@ -77,7 +76,7 @@ where
     }
 
     // Apply the state difference to the data layer.
-    pub fn apply_inner_state_diff(
+    pub(crate) fn apply_inner_state_diff(
         &self,
         starknet_block_number: u64,
         starknet_block_hash: H256,
@@ -93,7 +92,7 @@ where
         let mut substrate_block = SubstrateBlock {
             header: SubstrateHeader {
                 parent_hash: block_info.best_hash,
-                number: block_info.best_number.try_into().unwrap_or_default(),
+                number: block_info.best_number,
                 // todo calculate substrate state root
                 state_root: Default::default(),
                 extrinsics_root: Default::default(),
@@ -139,13 +138,15 @@ where
             return Err(Error::AlreadyInChain);
         }
 
-        let best_starknet_block = get_block_by_block_hash(self.client.as_ref(), block_chain_info.best_hash)
-            .ok_or_else(|| Error::UnknownBlock)?;
+        let best_starknet_block =
+            get_block_by_block_hash(self.client.as_ref(), block_chain_info.best_hash).ok_or(Error::UnknownBlock)?;
 
-        let mut starknet_header = Header::default();
-        starknet_header.parent_block_hash = best_starknet_block.header().hash::<PedersenHasher>().into();
-        starknet_header.block_number = block_number as u64;
-        starknet_header.protocol_version = best_starknet_block.header().protocol_version;
+        let starknet_header = Header {
+            parent_block_hash: best_starknet_block.header().hash::<PedersenHasher>().into(),
+            block_number: block_number as u64,
+            protocol_version: best_starknet_block.header().protocol_version,
+            ..Default::default()
+        };
 
         Ok(Block::new(starknet_header, Default::default()))
     }
@@ -171,11 +172,13 @@ where
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct InnerStorageChangeSet {
     pub changes: Vec<(StorageKey, Option<StorageValue>)>,
+
+    #[allow(clippy::type_complexity)]
     pub child_changes: Vec<(StorageKey, Vec<(StorageKey, Option<StorageValue>)>)>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct InnerStateDiff {
+pub(crate) struct InnerStateDiff {
     pub commitment: CommitmentStateDiff,
     pub declared_classes: IndexMap<ClassHash, ContractClass, HasherBuilder>,
 }
@@ -209,12 +212,11 @@ pub fn storage_key_build(prefix: Vec<u8>, key: &[u8]) -> Vec<u8> {
     [prefix, Identity::hash(key)].concat()
 }
 
-impl Into<InnerStateDiff> for InnerStorageChangeSet {
-    // TODO replace by try_into.
-    fn into(self) -> InnerStateDiff {
-        let mut state_diff = InnerStateDiff::default();
+impl From<InnerStorageChangeSet> for InnerStateDiff {
+    fn from(value: InnerStorageChangeSet) -> Self {
+        let mut state_diff = Self::default();
 
-        for (_prefix, full_storage_key, change) in self.iter() {
+        for (_prefix, full_storage_key, change) in value.iter() {
             // The storages we are interested in all have prefix of length 32 bytes.
             // The pallet identifier takes 16 bytes, the storage one 16 bytes.
             // So if a storage key is smaller than 32 bytes,
@@ -283,7 +285,7 @@ impl From<InnerStateDiff> for InnerStorageChangeSet {
     fn from(inner_state_diff: InnerStateDiff) -> Self {
         let mut changes: Vec<(StorageKey, Option<StorageValue>)> = Vec::new();
         // now starknet not use child changes.
-        let mut _child_changes: Vec<(StorageKey, Vec<(StorageKey, Option<StorageValue>)>)> = Vec::new();
+        let mut _child_changes = Vec::new();
 
         for (address, class_hash) in inner_state_diff.commitment.address_to_class_hash.iter() {
             let storage_key = storage_key_build(SN_CONTRACT_CLASS_HASH_PREFIX.clone(), &address.encode());

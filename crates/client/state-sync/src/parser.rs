@@ -1,18 +1,11 @@
-use std::sync::Arc;
-
-use ethers::types::U256;
 use indexmap::IndexMap;
 use mp_felt::Felt252Wrapper;
-use pallet_starknet::runtime_api::StarknetRuntimeApi;
-use sp_api::ProvideRuntimeApi;
-use sp_blockchain::HeaderBackend;
-use sp_runtime::traits::Block as BlockT;
 use starknet_api::api_core::{ClassHash, CompiledClassHash, ContractAddress, Nonce};
 use starknet_api::deprecated_contract_class::ContractClass as DeprecatedContractClass;
 use starknet_api::hash::StarkFelt;
-use starknet_api::state::{ContractClass, StateDiff, StorageKey};
+use starknet_api::state::{ContractClass, StorageKey};
 
-use crate::Error;
+use super::*;
 
 #[allow(dead_code)]
 const NUM_STORAGE_UPDATES_WIDTH: u64 = 64; // Adjust this based on your logic
@@ -44,12 +37,12 @@ where
 
     #[cfg(not(test))]
     match client.runtime_api().contract_class_hash_by_address(block_hash, address) {
-        Ok(class_hash) => return Ok(!class_hash.eq(&ClassHash::default())),
+        Ok(class_hash) => Ok(!class_hash.eq(&ClassHash::default())),
         Err(e) => Err(Error::Other(e.to_string())),
     }
 }
 
-pub fn decode_011_diff<B, C>(encoded_diff: &Vec<U256>, block_hash: B::Hash, client: Arc<C>) -> Result<StateDiff, Error>
+pub fn decode_011_diff<B, C>(encoded_diff: &[U256], block_hash: B::Hash, client: Arc<C>) -> Result<StateDiff, Error>
 where
     B: BlockT,
     C: ProvideRuntimeApi<B> + HeaderBackend<B>,
@@ -124,7 +117,7 @@ where
 }
 
 #[allow(dead_code)]
-pub fn decode_pre_011_diff(encoded_diff: &mut Vec<U256>, with_constructor_args: bool) -> Result<StateDiff, Error> {
+pub fn decode_pre_011_diff(encoded_diff: &[U256], with_constructor_args: bool) -> Result<StateDiff, Error> {
     let mut offset = 0;
     let num_deployments_cells = encoded_diff[offset].as_usize();
     offset += 1;

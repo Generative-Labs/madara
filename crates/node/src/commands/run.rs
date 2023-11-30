@@ -93,8 +93,6 @@ pub fn run_node(mut cli: Cli) -> Result<()> {
 
     let sync_from_l1_config = cli.run.sync_from_l1.clone().map(|s| PathBuf::from(s));
 
-    println!("{:#?}", sync_from_l1_config);
-
     runner.run_node_until_exit(|config| async move {
         let sealing = cli.run.sealing.map(Into::into).unwrap_or_default();
         let cache = cli.run.cache;

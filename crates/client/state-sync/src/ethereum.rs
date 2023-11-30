@@ -120,14 +120,17 @@ impl EthereumStateFetcher {
     pub async fn get_logs_retry(&self, filter: &Filter) -> Result<Vec<Log>, Error> {
         let mut retries = 0;
         loop {
-            let provider = self
-                .current_provider_index
-                .lock()
-                .map(|index| {
-                    let current_provider_url = &self.eth_url_list[*index];
-                    Provider::<Http>::try_from(current_provider_url).map_err(|e| Error::L1Connection(e.to_string()))
-                })
-                .map_err(|e| Error::Other(e.to_string()))??;
+            let provider = if self.eth_url_list.len() > 1 && retries > 0{
+                self.http_provider.clone()
+            } else {
+                self.current_provider_index
+                    .lock()
+                    .map(|index| {
+                        let current_provider_url = &self.eth_url_list[*index];
+                        Provider::<Http>::try_from(current_provider_url).map_err(|e| Error::L1Connection(e.to_string()))
+                    })
+                    .map_err(|e| Error::Other(e.to_string()))??
+            };
 
             match provider.get_logs(&filter).await {
                 Ok(logs) => return Ok(logs),

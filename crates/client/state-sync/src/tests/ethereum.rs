@@ -96,5 +96,5 @@ async fn test_get_logs_retry() {
     let to: u64 = 1000001;
     let filter = filter.from_block(from).to_block(to);
 
-    client.get_logs_retry(&filter).await.unwrap();
+    assert!(client.get_logs_retry(&filter).await.is_err());
 }

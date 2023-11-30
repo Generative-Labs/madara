@@ -20,7 +20,7 @@ use log::error;
 use mc_db::L1L2BlockMapping;
 use pallet_starknet::runtime_api::StarknetRuntimeApi;
 use sc_client_api::backend::Backend;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
@@ -32,7 +32,7 @@ use writer::StateWriter;
 const LOG_TARGET: &str = "state-sync";
 
 // StateSyncConfig defines the parameters to start the task of syncing states from L1.
-#[derive(Clone, PartialEq, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct StateSyncConfig {
     // The block from which syncing starts on L1.
     pub l1_start: u64,
@@ -49,7 +49,7 @@ pub struct StateSyncConfig {
     // The starknet state diff format changed in l1 block height.
     pub v011_diff_format_height: u64,
     // The number of blocks to query from L1 each time.
-    pub fetch_block_step: String,
+    pub fetch_block_step: u64,
     // The time interval for each query.
     pub syncing_fetch_interval: u64,
     // The time interval for each query.
@@ -134,6 +134,24 @@ where
 
     let sync_status_oracle = Arc::new(SyncStatusOracle { sync_status });
 
+    let mut mapping = L1L2BlockMapping {
+        l1_block_hash: Default::default(),
+        l1_block_number: state_sync_config.l1_start,
+        l2_block_hash: Default::default(),
+        l2_block_number: state_sync_config.l2_start,
+    };
+
+    if let Ok(last_mapping) = madara_backend.meta().last_l1_l2_mapping() {
+        if last_mapping.l1_block_number < mapping.l1_block_number
+            || last_mapping.l2_block_number < mapping.l2_block_number
+        {
+            mapping.l1_block_number = state_sync_config.l1_start;
+            mapping.l2_block_number = state_sync_config.l2_start;
+        }
+    }
+
+    madara_backend.meta().write_last_l1_l2_mapping(&mapping).map_err(|e| Error::Other(e.to_string()))?;
+
     Ok((run(state_fetcher, madara_backend, substrate_client, substrate_backend), sync_status_oracle))
 }
 
@@ -158,8 +176,8 @@ where
 
     let madara_backend_clone = madara_backend.clone();
     let fetcher_task = async move {
-        let mut eth_from_height: u64;
-        let mut starknet_start_height: u64;
+        let mut eth_from_height: u64 = 0;
+        let mut starknet_start_height: u64 = 0;
 
         match madara_backend_clone.clone().meta().last_l1_l2_mapping() {
             Ok(mapping) => {
@@ -168,7 +186,6 @@ where
             }
             Err(e) => {
                 error!(target: LOG_TARGET, "read last l1 l2 mapping failed, error {:#?}.", e);
-                return;
             }
         }
 

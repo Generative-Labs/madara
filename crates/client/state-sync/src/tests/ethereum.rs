@@ -7,7 +7,7 @@ use mc_db::L1L2BlockMapping;
 
 use crate::ethereum::EthereumStateFetcher;
 use crate::tests::writer::{create_temp_madara_backend, create_test_client};
-use crate::{run, u256_to_h256, StateFetcher, SyncStatus};
+use crate::{run, u256_to_h256, StateFetcher, StateSyncConfig, SyncStatus};
 
 #[tokio::test]
 async fn test_fetch_and_decode_state_diff() {
@@ -144,4 +144,23 @@ async fn test_mock_fetch_and_decode_state_diff() {
         sync_status,
     )
     .unwrap();
+}
+
+#[test]
+fn unused_test() {
+    let conf = StateSyncConfig {
+        l1_start: 9064757,
+        core_contract: "0xde29d060D45901Fb19ED6C6e959EB22d8626708e".to_string(),
+        verifier_contract: "0x47312450B3Ac8b5b8e247a6bB6d523e7605bDb60".to_string(),
+        memory_page_contract: "0xdc1534eeBF8CEEe76E31C98F5f5e0F9979476c87".to_string(),
+        l2_start: 809818,
+        l1_url: "https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH".to_string(),
+        v011_diff_format_height: 28566,
+        fetch_block_step: 1000,
+        syncing_fetch_interval: 1000,
+        synced_fetch_interval: 1000,
+    };
+
+    let res = serde_json::to_string(&conf).unwrap();
+    println!("{}", res);
 }

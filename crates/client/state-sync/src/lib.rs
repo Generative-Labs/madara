@@ -8,7 +8,7 @@ mod tests;
 use std::cmp::Ordering;
 use std::fs::File;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -86,7 +86,7 @@ impl Ord for FetchState {
 
 #[async_trait]
 pub trait StateFetcher {
-    async fn state_diff<B, C>(&self, l1_from: u64, l2_start: u64, client: Arc<C>) -> Result<Vec<FetchState>, Error>
+    async fn state_diff<B, C>(&mut self, l1_from: u64, l2_start: u64, client: Arc<C>) -> Result<Vec<FetchState>, Error>
     where
         B: BlockT,
         C: ProvideRuntimeApi<B> + HeaderBackend<B>,
@@ -94,7 +94,7 @@ pub trait StateFetcher {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum SyncStatus {
+pub enum SyncStatus {
     SYNCING,
     SYNCED,
 }
@@ -122,20 +122,24 @@ where
 
     let eth_url_list = vec![state_sync_config.l1_url];
 
-    let state_fetcher = Arc::new(EthereumStateFetcher::new(
+    let sync_status = Arc::new(Mutex::new(SyncStatus::SYNCING));
+    let state_fetcher: EthereumStateFetcher<ethers::providers::Http> = EthereumStateFetcher::new(
         contract_address,
         verifier_address,
         memory_page_address,
         eth_url_list,
         state_sync_config.v011_diff_format_height,
-    )?);
+        sync_status.clone(),
+    )?;
 
-    Ok((run(state_fetcher.clone(), madara_backend, substrate_client, substrate_backend), state_fetcher))
+    let sync_status_oracle = Arc::new(SyncStatusOracle { sync_status });
+
+    Ok((run(state_fetcher, madara_backend, substrate_client, substrate_backend), sync_status_oracle))
 }
 
 // TODO pass a config then create state_fetcher
 pub fn run<B, C, BE, SF>(
-    state_fetcher: Arc<SF>,
+    mut state_fetcher: SF,
     madara_backend: Arc<mc_db::Backend<B>>,
     substrate_client: Arc<C>,
     substrate_backend: Arc<BE>,
@@ -151,7 +155,6 @@ where
 
     let state_writer = StateWriter::new(substrate_client.clone(), substrate_backend, madara_backend.clone());
     let state_writer = Arc::new(state_writer);
-    let state_fetcher_clone = state_fetcher.clone();
 
     let madara_backend_clone = madara_backend.clone();
     let fetcher_task = async move {
@@ -170,8 +173,7 @@ where
         }
 
         loop {
-            match state_fetcher_clone.state_diff(eth_from_height, starknet_start_height, substrate_client.clone()).await
-            {
+            match state_fetcher.state_diff(eth_from_height, starknet_start_height, substrate_client.clone()).await {
                 Ok(mut fetched_states) => {
                     if fetched_states.is_empty() {
                         eth_from_height += 10;
@@ -238,4 +240,18 @@ pub enum Error {
     L1StateError(String),
     TypeError(String),
     Other(String),
+}
+
+struct SyncStatusOracle {
+    sync_status: Arc<Mutex<SyncStatus>>,
+}
+
+impl SyncOracle for SyncStatusOracle {
+    fn is_major_syncing(&self) -> bool {
+        self.sync_status.lock().map(|status| *status == SyncStatus::SYNCING).unwrap_or_default()
+    }
+
+    fn is_offline(&self) -> bool {
+        false
+    }
 }

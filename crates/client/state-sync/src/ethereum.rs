@@ -6,7 +6,9 @@ use async_trait::async_trait;
 use ethers::abi::RawLog;
 use ethers::contract::{BaseContract, EthEvent, EthLogDecode};
 use ethers::core::abi::parse_abi;
-use ethers::providers::{Http, Middleware, Provider};
+#[cfg(test)]
+use ethers::providers::MockProvider;
+use ethers::providers::{Http, JsonRpcClient, Middleware, Provider};
 use ethers::types::{Address, Filter, Log, H256, I256, U256};
 use log::debug;
 use sp_runtime::generic::BlockId;
@@ -74,9 +76,9 @@ impl Default for SyncStatus {
     }
 }
 
-#[derive(Debug)]
-pub struct EthereumStateFetcher {
-    http_provider: Provider<Http>,
+#[derive(Debug, Clone)]
+pub struct EthereumStateFetcher<P: JsonRpcClient> {
+    http_provider: Provider<P>,
 
     core_contract: Address,
 
@@ -86,24 +88,50 @@ pub struct EthereumStateFetcher {
 
     eth_url_list: Vec<String>, // Ethereum Node URL List
 
-    current_provider_index: Mutex<usize>,
+    current_provider_index: Arc<Mutex<usize>>,
 
-    sync_status: Mutex<SyncStatus>,
+    sync_status: Arc<Mutex<SyncStatus>>,
 
     v011_diff_format_height: u64,
 }
 
-impl EthereumStateFetcher {
+impl EthereumStateFetcher<Http> {
     pub fn new(
+        core_contract: Address,
+        verifier_contract: Address,
+        memory_page_contract: Address,
+        eth_urls: Vec<String>,
+        v011_diff_format_height: u64,
+        sync_status: Arc<Mutex<SyncStatus>>,
+    ) -> Result<Self, Error> {
+        let provider =
+            Provider::<Http>::try_from(eth_urls[0].clone()).map_err(|e| Error::L1Connection(e.to_string()))?;
+
+        Ok(Self {
+            http_provider: provider,
+            core_contract,
+            verifier_contract,
+            memory_page_contract,
+            eth_url_list: eth_urls,
+            current_provider_index: Arc::new(Mutex::new(0)),
+            sync_status,
+            v011_diff_format_height,
+        })
+    }
+}
+
+#[cfg(test)]
+impl EthereumStateFetcher<MockProvider> {
+    pub fn mock(
         core_contract: Address,
         verifier_contract: Address,
         memory_page_contract: Address,
         eth_url_list: Vec<String>,
         v011_diff_format_height: u64,
+        mock_provider: MockProvider,
+        sync_status: Arc<Mutex<SyncStatus>>,
     ) -> Result<Self, Error> {
-        let current_provider_index = 0;
-        let provider = Provider::<Http>::try_from(eth_url_list[current_provider_index].clone())
-            .map_err(|e| Error::L1Connection(e.to_string()))?;
+        let provider = Provider::<MockProvider>::new(mock_provider);
 
         Ok(Self {
             http_provider: provider,
@@ -111,26 +139,29 @@ impl EthereumStateFetcher {
             verifier_contract,
             memory_page_contract,
             eth_url_list,
-            current_provider_index: Mutex::new(current_provider_index),
-            sync_status: Mutex::new(SyncStatus::SYNCING),
+            current_provider_index: Arc::new(Mutex::new(0)),
+            sync_status,
             v011_diff_format_height,
         })
     }
+}
 
-    pub async fn get_logs_retry(&self, filter: &Filter) -> Result<Vec<Log>, Error> {
+impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
+    pub async fn get_logs_retry(&mut self, filter: &Filter) -> Result<Vec<Log>, Error> {
+        if let Ok(res) = self.http_provider.get_logs(&filter).await {
+            return Ok(res);
+        }
+
         let mut retries = 0;
         loop {
-            let provider = if self.eth_url_list.len() > 1 && retries > 0{
-                self.http_provider.clone()
-            } else {
-                self.current_provider_index
-                    .lock()
-                    .map(|index| {
-                        let current_provider_url = &self.eth_url_list[*index];
-                        Provider::<Http>::try_from(current_provider_url).map_err(|e| Error::L1Connection(e.to_string()))
-                    })
-                    .map_err(|e| Error::Other(e.to_string()))??
-            };
+            let provider = self
+                .current_provider_index
+                .lock()
+                .map(|index| {
+                    let current_provider_url = &self.eth_url_list[*index];
+                    Provider::<Http>::try_from(current_provider_url).map_err(|e| Error::L1Connection(e.to_string()))
+                })
+                .map_err(|e| Error::Other(e.to_string()))??;
 
             match provider.get_logs(&filter).await {
                 Ok(logs) => return Ok(logs),
@@ -171,7 +202,7 @@ impl EthereumStateFetcher {
     }
 
     pub(crate) async fn query_state_update(
-        &self,
+        &mut self,
         eth_from: u64,
         starknet_from: u64,
     ) -> Result<Vec<StateUpdate>, Error> {
@@ -252,7 +283,7 @@ impl EthereumStateFetcher {
     }
 
     pub async fn query_state_transition_fact(
-        &self,
+        &mut self,
         eth_from: u64,
         tx_index: u64,
     ) -> Result<LogStateTransitionFact, Error> {
@@ -284,7 +315,7 @@ impl EthereumStateFetcher {
     }
 
     pub async fn query_memory_pages_hashes(
-        &self,
+        &mut self,
         eth_from: u64,
         state_transition_fact: LogStateTransitionFact,
     ) -> Result<LogMemoryPagesHashes, Error> {
@@ -328,7 +359,7 @@ impl EthereumStateFetcher {
     }
 
     pub async fn query_memory_page_fact_continuous_logs(
-        &self,
+        &mut self,
         eth_from: u64,
         pages_hashes: &mut Vec<U256>,
     ) -> Result<Vec<LogMemoryPageFactContinuousWithTxHash>, Error> {
@@ -379,7 +410,7 @@ impl EthereumStateFetcher {
         Ok(match_pages_hashes.into_iter().flatten().collect())
     }
 
-    pub async fn query_and_decode_transaction(&self, hash: H256) -> Result<Vec<U256>, Error> {
+    pub async fn query_and_decode_transaction(&mut self, hash: H256) -> Result<Vec<U256>, Error> {
         let tx = self
             .http_provider
             .get_transaction(hash)
@@ -421,7 +452,11 @@ impl EthereumStateFetcher {
         }
     }
 
-    pub async fn query_state_diff<B, C>(&self, state_update: &StateUpdate, client: Arc<C>) -> Result<FetchState, Error>
+    pub async fn query_state_diff<B, C>(
+        &mut self,
+        state_update: &StateUpdate,
+        client: Arc<C>,
+    ) -> Result<FetchState, Error>
     where
         B: BlockT,
         C: ProvideRuntimeApi<B> + HeaderBackend<B>,
@@ -475,8 +510,8 @@ impl EthereumStateFetcher {
 }
 
 #[async_trait]
-impl StateFetcher for EthereumStateFetcher {
-    async fn state_diff<B, C>(&self, l1_from: u64, l2_start: u64, client: Arc<C>) -> Result<Vec<FetchState>, Error>
+impl<P: JsonRpcClient + Clone> StateFetcher for EthereumStateFetcher<P> {
+    async fn state_diff<B, C>(&mut self, l1_from: u64, l2_start: u64, client: Arc<C>) -> Result<Vec<FetchState>, Error>
     where
         B: BlockT,
         C: ProvideRuntimeApi<B> + HeaderBackend<B>,
@@ -487,7 +522,7 @@ impl StateFetcher for EthereumStateFetcher {
 
         let tasks = state_updates.iter().map(|updates| {
             let client_clone = client.clone();
-            let fetcher = self;
+            let mut fetcher = self.clone();
             async move { fetcher.query_state_diff(updates, client_clone).await }
         });
 
@@ -502,15 +537,5 @@ impl StateFetcher for EthereumStateFetcher {
         }
 
         Ok(states_res)
-    }
-}
-
-impl SyncOracle for EthereumStateFetcher {
-    fn is_major_syncing(&self) -> bool {
-        self.sync_status.lock().map(|status| *status == SyncStatus::SYNCING).unwrap_or_default()
-    }
-
-    fn is_offline(&self) -> bool {
-        false
     }
 }

@@ -18,9 +18,11 @@ use tokio::time::sleep;
 
 use super::*;
 
+/// Constants for state and log search steps
 const STATE_SEARCH_STEP: u64 = 1;
 const LOG_SEARCH_STEP: u64 = 500;
 
+/// Represents the Ethereum origin information for state updates.
 #[derive(Debug)]
 pub struct EthOrigin {
     block_hash: H256,
@@ -29,12 +31,14 @@ pub struct EthOrigin {
     transaction_index: u64,
 }
 
+/// Represents a state update, combining Ethereum origin information with log state update data.
 #[derive(Debug)]
 pub struct StateUpdate {
     eth_origin: EthOrigin,
     update: LogStateUpdate,
 }
 
+/// Ethereum contract event representing a log state update.
 #[derive(Clone, Debug, PartialEq, Eq, EthEvent)]
 #[ethevent(name = "LogStateUpdate")]
 pub struct LogStateUpdate {
@@ -43,12 +47,14 @@ pub struct LogStateUpdate {
     pub block_hash: U256,
 }
 
+/// Ethereum contract event representing a log state transition fact.
 #[derive(Clone, Debug, PartialEq, Eq, EthEvent)]
 #[ethevent(name = "LogStateTransitionFact")]
 pub struct LogStateTransitionFact {
     pub fact: [u8; 32],
 }
 
+/// Ethereum contract event representing a log of memory pages hashes.
 #[derive(Clone, Debug, PartialEq, Eq, EthEvent)]
 #[ethevent(name = "LogMemoryPagesHashes")]
 pub struct LogMemoryPagesHashes {
@@ -56,6 +62,7 @@ pub struct LogMemoryPagesHashes {
     pub pages_hashes: Vec<[u8; 32]>,
 }
 
+/// Ethereum contract event representing a continuous log of memory page facts.
 #[derive(Clone, Debug, PartialEq, Eq, EthEvent)]
 #[ethevent(name = "LogMemoryPageFactContinuous")]
 pub struct LogMemoryPageFactContinuous {
@@ -64,6 +71,7 @@ pub struct LogMemoryPageFactContinuous {
     pub prod: U256,
 }
 
+/// Represents a continuous log of memory page facts with a corresponding transaction hash.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LogMemoryPageFactContinuousWithTxHash {
     pub log_memory_page_fact_continuous: LogMemoryPageFactContinuous,
@@ -76,6 +84,7 @@ impl Default for SyncStatus {
     }
 }
 
+/// Struct responsible for fetching and decoding Ethereum state information.
 #[derive(Debug, Clone)]
 pub struct EthereumStateFetcher<P: JsonRpcClient> {
     http_provider: Provider<P>,
@@ -96,7 +105,19 @@ pub struct EthereumStateFetcher<P: JsonRpcClient> {
 }
 
 impl EthereumStateFetcher<Http> {
-    pub fn new(
+	/// Creates a new `EthereumStateFetcher` instance.
+	///
+	/// # Arguments
+	///
+	/// * `core_contract` - Address of the core contract on L1.
+	/// * `verifier_contract` - Address of the verifier contract on L1.
+	/// * `memory_page_contract` - Address of the memory page contract on L1.
+	/// * `eth_url_list` - List of Ethereum node URLs.
+	///
+	/// # Returns
+	///
+	/// A `Result` containing the initialized `EthereumStateFetcher` or an `Error` if initialization fails.
+	pub fn new(
         core_contract: Address,
         verifier_contract: Address,
         memory_page_contract: Address,
@@ -201,7 +222,17 @@ impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
         Duration::from_secs(final_backoff)
     }
 
-    pub(crate) async fn query_state_update(
+	/// Queries Ethereum state updates within a specified range.
+	///
+	/// # Arguments
+	///
+	/// * `eth_from` - The starting block number on Ethereum.
+	/// * `starknet_from` - The starting block number on StarkNet.
+	///
+	/// # Returns
+	///
+	/// A `Result` containing a vector of `StateUpdate` instances or an `Error` if the query fails.
+	pub(crate) async fn query_state_update(
         &mut self,
         eth_from: u64,
         starknet_from: u64,
@@ -282,7 +313,17 @@ impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
         }
     }
 
-    pub async fn query_state_transition_fact(
+	/// Queries Ethereum logs for a specific state transition fact within a specified block range.
+	///
+	/// # Arguments
+	///
+	/// * `eth_from` - The starting block number on Ethereum.
+	/// * `tx_index` - The transaction index within the block.
+	///
+	/// # Returns
+	///
+	/// A `Result` containing the fetched `LogStateTransitionFact` or an `Error` if the query fails.
+	pub async fn query_state_transition_fact(
         &mut self,
         eth_from: u64,
         tx_index: u64,
@@ -314,7 +355,17 @@ impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
             })
     }
 
-    pub async fn query_memory_pages_hashes(
+	/// Queries Ethereum logs containing memory pages hashes for a specific state transition fact.
+	///
+	/// # Arguments
+	///
+	/// * `eth_from` - The starting block number on Ethereum.
+	/// * `state_transition_fact` - The state transition fact for filtering logs.
+	///
+	/// # Returns
+	///
+	/// A `Result` containing the fetched `LogMemoryPagesHashes` or an `Error` if the query fails.
+	pub async fn query_memory_pages_hashes(
         &mut self,
         eth_from: u64,
         state_transition_fact: LogStateTransitionFact,
@@ -358,6 +409,17 @@ impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
         }
     }
 
+	/// Queries continuous logs of memory page facts within a specific Ethereum block range.
+	///
+	/// # Arguments
+	///
+	/// * `eth_from` - The starting block number on Ethereum.
+	/// * `pages_hashes` - Mutable reference to a vector of memory pages hashes.
+	///
+	/// # Returns
+	///
+	/// A `Result` containing a vector of `LogMemoryPageFactContinuousWithTxHash` instances or an `Error`
+	/// if the query fails.
     pub async fn query_memory_page_fact_continuous_logs(
         &mut self,
         eth_from: u64,
@@ -410,7 +472,16 @@ impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
         Ok(match_pages_hashes.into_iter().flatten().collect())
     }
 
-    pub async fn query_and_decode_transaction(&mut self, hash: H256) -> Result<Vec<U256>, Error> {
+	/// Queries and decodes a transaction input data to obtain state diff information.
+	///
+	/// # Arguments
+	///
+	/// * `hash` - The hash of the transaction.
+	///
+	/// # Returns
+	///
+	/// A `Result` containing the decoded state diff data or an `Error` if the query fails.
+	pub async fn query_and_decode_transaction(&mut self, hash: H256) -> Result<Vec<U256>, Error> {
         let tx = self
             .http_provider
             .get_transaction(hash)
@@ -429,7 +500,18 @@ impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
         Ok(data)
     }
 
-    pub fn decode_state_diff<B, C>(
+	/// Decodes the StarkNet state diff from raw data.
+	///
+	/// # Arguments
+	/// * `l1_block_number` - The L1 block number.
+	/// * `starknet_block_number` - The StarkNet block number.
+	/// * `data` - The raw data containing the state diff information.
+	/// * `client` - The StarkNet runtime client.
+	///
+	/// # Returns
+	///
+	/// A `Result` containing the decoded `StateDiff` or an `Error` if decoding fails.
+	pub fn decode_state_diff<B, C>(
         &self,
         l1_block_number: u64,
         starknet_block_number: u64,
@@ -452,7 +534,17 @@ impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
         }
     }
 
-    pub async fn query_state_diff<B, C>(
+	/// Queries Ethereum state differences for a specific StarkNet state update.
+	///
+	/// # Arguments
+	///
+	/// * `state_update` - The state update containing Ethereum origin and log state update data.
+	/// * `client` - The StarkNet runtime client.
+	///
+	/// # Returns
+	///
+	/// A `Result` containing the fetched `FetchState` or an `Error` if the query fails.
+	pub async fn query_state_diff<B, C>(
         &mut self,
         state_update: &StateUpdate,
         client: Arc<C>,

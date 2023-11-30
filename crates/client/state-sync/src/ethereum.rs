@@ -18,8 +18,8 @@ use tokio::time::sleep;
 
 use super::*;
 
-const STATE_SEARCH_STEP: u64 = 10;
-const LOG_SEARCH_STEP: u64 = 1000;
+const STATE_SEARCH_STEP: u64 = 1;
+const LOG_SEARCH_STEP: u64 = 500;
 
 #[derive(Debug)]
 pub struct EthOrigin {
@@ -463,6 +463,7 @@ impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
         C::Api: StarknetRuntimeApi<B>,
     {
         debug!(target: LOG_TARGET,"~~ query state diff for starknet block {:#?}", state_update.update.block_number);
+        println!("~~ query state diff for starknet block {:#?}. {:#?}", state_update.eth_origin.block_number, state_update.update.block_number);
 
         let fact = self
             .query_state_transition_fact(
@@ -471,7 +472,11 @@ impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
             )
             .await?;
 
+        println!("~~ query state diff fact for starknet block {:#?}, {:#?}", state_update.eth_origin.block_number, state_update.update.block_number);
+
         let pages_hashes = self.query_memory_pages_hashes(state_update.eth_origin.block_number, fact).await?;
+
+        println!("~~ query state diff pages_hashes for starknet block {:#?}, {:#?}", state_update.eth_origin.block_number,  state_update.update.block_number);
 
         let mut pages_hashes =
             pages_hashes.pages_hashes.iter().map(|data| U256::from_big_endian(data)).collect::<Vec<_>>();
@@ -480,10 +485,13 @@ impl<P: JsonRpcClient + Clone> EthereumStateFetcher<P> {
             .query_memory_page_fact_continuous_logs(state_update.eth_origin.block_number, &mut pages_hashes)
             .await?;
 
+        println!("~~ query state diff continuous for starknet block {:#?}, {:#?}", state_update.eth_origin.block_number, state_update.update.block_number);
+
         let mut tx_input_data = Vec::new();
 
         for log in &continuous_logs_with_tx_hash[1..] {
             debug!(target: LOG_TARGET,"~~ decode state diff from tx: {:#?}", log.tx_hash);
+            println!("~~ decode state diff from tx: {:#?}", log.tx_hash);
 
             let mut data = self.query_and_decode_transaction(log.tx_hash).await?;
             tx_input_data.append(&mut data)
@@ -529,12 +537,15 @@ impl<P: JsonRpcClient + Clone> StateFetcher for EthereumStateFetcher<P> {
         });
 
         let fetched_states = futures::future::join_all(tasks).await;
-
+        println!("@@@ fetched states {:#?}", fetched_states);
         let mut states_res = Vec::new();
         for fetched_state in fetched_states {
             match fetched_state {
                 Ok(state) => states_res.push(state),
-                Err(e) => return Err(e),
+                Err(e) => {
+                    println!("-- {:#?}", e);
+                    return Err(e)
+                },
             }
         }
 

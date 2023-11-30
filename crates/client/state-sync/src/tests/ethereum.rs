@@ -5,7 +5,7 @@ use ethers::types::{Address, Filter, U256};
 use mc_db::L1L2BlockMapping;
 
 use crate::ethereum::EthereumStateFetcher;
-use crate::tests::sync::{create_temp_madara_backend, create_test_client};
+use crate::tests::writer::{create_temp_madara_backend, create_test_client};
 use crate::{run, u256_to_h256, StateFetcher};
 
 #[tokio::test]
@@ -16,7 +16,8 @@ async fn test_fetch_and_decode_state_diff() {
 
     let eth_url_list = vec![String::from("https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH")];
     let fetcher =
-        EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list).unwrap();
+        EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list, 28566)
+            .unwrap();
 
     let l1_from = 9064758;
     let l2_start = 809819;
@@ -35,7 +36,8 @@ async fn test_sync_state_diff_from_l1() {
 
     let eth_url_list = vec![String::from("https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH")];
     let fetcher =
-        EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list).unwrap();
+        EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list, 28566)
+            .unwrap();
     let fetcher = Arc::new(fetcher);
 
     let (madara_client, backend) = create_test_client();
@@ -86,12 +88,13 @@ async fn test_get_logs_retry() {
     ];
 
     let client =
-        EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list).unwrap();
+        EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list, 28566)
+            .unwrap();
     let filter = Filter::new().address(contract_address).event("LogStateUpdate(uint256,int256,uint256)");
 
     let from: u64 = 9064757;
     let to: u64 = 1000001;
-    let filter = filter.clone().from_block(from).to_block(to);
+    let filter = filter.from_block(from).to_block(to);
 
     client.get_logs_retry(&filter).await.unwrap();
 }

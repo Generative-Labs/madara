@@ -68,6 +68,12 @@ pub struct LogMemoryPageFactContinuousWithTxHash {
     pub tx_hash: H256,
 }
 
+impl Default for SyncStatus {
+    fn default() -> Self {
+        Self::SYNCING
+    }
+}
+
 #[derive(Debug)]
 pub struct EthereumStateFetcher {
     http_provider: Provider<Http>,
@@ -81,6 +87,10 @@ pub struct EthereumStateFetcher {
     eth_url_list: Vec<String>, // Ethereum Node URL List
 
     current_provider_index: Mutex<usize>,
+
+    sync_status: Mutex<SyncStatus>,
+
+    v011_diff_format_height: u64,
 }
 
 impl EthereumStateFetcher {
@@ -89,6 +99,7 @@ impl EthereumStateFetcher {
         verifier_contract: Address,
         memory_page_contract: Address,
         eth_url_list: Vec<String>,
+        v011_diff_format_height: u64,
     ) -> Result<Self, Error> {
         let current_provider_index = 0;
         let provider = Provider::<Http>::try_from(eth_url_list[current_provider_index].clone())
@@ -101,6 +112,8 @@ impl EthereumStateFetcher {
             memory_page_contract,
             eth_url_list,
             current_provider_index: Mutex::new(current_provider_index),
+            sync_status: Mutex::new(SyncStatus::SYNCING),
+            v011_diff_format_height,
         })
     }
 
@@ -159,10 +172,38 @@ impl EthereumStateFetcher {
         eth_from: u64,
         starknet_from: u64,
     ) -> Result<Vec<StateUpdate>, Error> {
+        let highest_eth_block_number =
+            self.http_provider.get_block_number().await.map_err(|e| Error::L1Connection(e.to_string()))?.as_u64();
+
         let filter = Filter::new().address(self.core_contract).event("LogStateUpdate(uint256,int256,uint256)");
 
         let mut from = eth_from;
         let mut to = eth_from + STATE_SEARCH_STEP;
+
+        // TODO: Using more precise criteria to determine whether it is in a syncing state.
+        if from > highest_eth_block_number {
+            from = highest_eth_block_number;
+
+            self.sync_status
+                .lock()
+                .and_then(|mut status| {
+                    *status = SyncStatus::SYNCED;
+                    Ok(())
+                })
+                .map_err(|e| Error::Other(e.to_string()))?;
+        } else {
+            self.sync_status
+                .lock()
+                .and_then(|mut status| {
+                    *status = SyncStatus::SYNCING;
+                    Ok(())
+                })
+                .map_err(|e| Error::Other(e.to_string()))?;
+        }
+
+        if to > highest_eth_block_number {
+            to = highest_eth_block_number
+        }
 
         loop {
             let filter = filter.clone().from_block(from).to_block(to);
@@ -356,6 +397,7 @@ impl EthereumStateFetcher {
 
     pub fn decode_state_diff<B, C>(
         &self,
+        l1_block_number: u64,
         starknet_block_number: u64,
         data: Vec<U256>,
         client: Arc<C>,
@@ -365,11 +407,15 @@ impl EthereumStateFetcher {
         C: ProvideRuntimeApi<B> + HeaderBackend<B>,
         C::Api: StarknetRuntimeApi<B>,
     {
-        let block_hash = client
-            .block_hash_from_id(&BlockId::Number((starknet_block_number as u32).saturating_sub(1).into()))
-            .map_err(|_| Error::UnknownBlock)?
-            .unwrap_or_default();
-        parser::decode_011_diff(&data, block_hash, client)
+        if l1_block_number < self.v011_diff_format_height {
+            parser::decode_pre_011_diff(&data, false)
+        } else {
+            let block_hash = client
+                .block_hash_from_id(&BlockId::Number((starknet_block_number as u32).saturating_sub(1).into()))
+                .map_err(|_| Error::UnknownBlock)?
+                .unwrap_or_default();
+            parser::decode_011_diff(&data, block_hash, client)
+        }
     }
 
     pub async fn query_state_diff<B, C>(&self, state_update: &StateUpdate, client: Arc<C>) -> Result<FetchState, Error>
@@ -405,7 +451,12 @@ impl EthereumStateFetcher {
             tx_input_data.append(&mut data)
         }
 
-        let state_diff = self.decode_state_diff(state_update.update.block_number.as_u64(), tx_input_data, client)?;
+        let state_diff = self.decode_state_diff(
+            state_update.eth_origin.block_number,
+            state_update.update.block_number.as_u64(),
+            tx_input_data,
+            client,
+        )?;
 
         Ok(FetchState {
             l1_l2_block_mapping: L1L2BlockMapping {
@@ -448,5 +499,15 @@ impl StateFetcher for EthereumStateFetcher {
         }
 
         Ok(states_res)
+    }
+}
+
+impl SyncOracle for EthereumStateFetcher {
+    fn is_major_syncing(&self) -> bool {
+        self.sync_status.lock().map(|status| *status == SyncStatus::SYNCING).unwrap_or_default()
+    }
+
+    fn is_offline(&self) -> bool {
+        false
     }
 }

@@ -6465,6 +6465,7 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
+ "sp-consensus",
  "sp-core 7.0.0",
  "sp-inherents",
  "sp-runtime 7.0.0",

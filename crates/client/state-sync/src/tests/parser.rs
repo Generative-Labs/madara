@@ -137,7 +137,7 @@ fn test_decode_011_diff() {
     }
     "#;
 
-    let (client, _) = crate::tests::sync::create_test_client();
+    let (client, _) = crate::tests::writer::create_test_client();
     let client = Arc::new(client);
     let block_hash = client.info().best_hash;
 

@@ -1,6 +1,6 @@
 mod ethereum;
 mod parser;
-mod sync;
+mod writer;
 
 #[cfg(test)]
 mod tests;
@@ -23,10 +23,11 @@ use sc_client_api::backend::Backend;
 use serde::Deserialize;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
+use sp_consensus::SyncOracle;
 use sp_runtime::generic::Header as GenericHeader;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
 use starknet_api::state::StateDiff;
-use sync::StateWriter;
+use writer::StateWriter;
 
 const LOG_TARGET: &str = "state-sync";
 
@@ -45,10 +46,14 @@ pub struct StateSyncConfig {
     pub l2_start: u64,
     // The RPC url for L1.
     pub l1_url: String,
+    // The starknet state diff format changed in l1 block height.
+    pub v011_diff_format_height: u64,
     // The number of blocks to query from L1 each time.
     pub fetch_block_step: String,
     // The time interval for each query.
-    pub fetch_interval: u64,
+    pub syncing_fetch_interval: u64,
+    // The time interval for each query.
+    pub synced_fetch_interval: u64,
 }
 
 impl TryFrom<&PathBuf> for StateSyncConfig {
@@ -88,12 +93,18 @@ pub trait StateFetcher {
         C::Api: StarknetRuntimeApi<B>;
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SyncStatus {
+    SYNCING,
+    SYNCED,
+}
+
 pub fn create_and_run<B, C, BE>(
     config_path: PathBuf,
     madara_backend: Arc<mc_db::Backend<B>>,
     substrate_client: Arc<C>,
     substrate_backend: Arc<BE>,
-) -> Result<impl Future<Output = ()> + Send, Error>
+) -> Result<(impl Future<Output = ()> + Send, Arc<dyn SyncOracle + Send + Sync>), Error>
 where
     B: BlockT<Hash = H256, Header = GenericHeader<u32, BlakeTwo256>>,
     C: HeaderBackend<B> + ProvideRuntimeApi<B> + 'static,
@@ -101,6 +112,7 @@ where
     BE: Backend<B> + 'static,
 {
     let state_sync_config = StateSyncConfig::try_from(&config_path).map_err(|e| Error::Other(e.to_string()))?;
+
     let contract_address =
         state_sync_config.core_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
     let verifier_address =
@@ -110,11 +122,15 @@ where
 
     let eth_url_list = vec![state_sync_config.l1_url];
 
-    let state_fetcher =
-        EthereumStateFetcher::new(contract_address, verifier_address, memory_page_address, eth_url_list)?;
-    let state_fetcher = Arc::new(state_fetcher);
+    let state_fetcher = Arc::new(EthereumStateFetcher::new(
+        contract_address,
+        verifier_address,
+        memory_page_address,
+        eth_url_list,
+        state_sync_config.v011_diff_format_height,
+    )?);
 
-    Ok(run(state_fetcher, madara_backend, substrate_client, substrate_backend))
+    Ok((run(state_fetcher.clone(), madara_backend, substrate_client, substrate_backend), state_fetcher))
 }
 
 // TODO pass a config then create state_fetcher
@@ -174,6 +190,7 @@ where
                     error!(target: LOG_TARGET, "fetch state diff from l1 has error {:#?}", e);
                 }
             }
+            // TODO syncing, synced
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
     };

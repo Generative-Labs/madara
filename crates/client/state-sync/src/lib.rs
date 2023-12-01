@@ -124,16 +124,19 @@ pub struct StateSyncConfig {
     // The block from which syncing starts on L2.
     pub l2_start: u64,
     // The RPC url for L1.
-    pub l1_url: String,
+    pub l1_url_list: Vec<String>,
     // The starknet state diff format changed in l1 block height.
     pub v011_diff_format_height: u64,
     // The starknet state diff contains contract construct args.
     pub constructor_args_diff_height: u64,
     // The number of blocks to query from L1 each time.
+    #[serde(default)]
     pub fetch_block_step: u64,
     // The time interval for each query.
+    #[serde(default)]
     pub syncing_fetch_interval: u64,
     // The time interval for each query.
+    #[serde(default)]
     pub synced_fetch_interval: u64,
 }
 
@@ -199,14 +202,12 @@ where
     let memory_page_address =
         config.memory_page_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
 
-    let eth_url_list = vec![config.l1_url];
-
     let sync_status = Arc::new(Mutex::new(SyncStatus::SYNCING));
     let state_fetcher: EthereumStateFetcher<ethers::providers::Http> = EthereumStateFetcher::new(
         contract_address,
         verifier_address,
         memory_page_address,
-        eth_url_list,
+        config.l1_url_list,
         config.v011_diff_format_height,
         sync_status.clone(),
         config.constructor_args_diff_height,

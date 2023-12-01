@@ -1,3 +1,82 @@
+//! # State Sync
+//!
+//! The state sync module facilitates synchronization of state data between Layer 1 (L1) and Layer 2 (L2)
+//! blockchains. It includes components for fetching state differences, processing them, and updating
+//! the substrate storage accordingly.
+//!
+//! ## Modules
+//!
+//! - [`ethereum`](ethereum): Contains the Ethereum state fetcher implementation for fetching state
+//!   differences from an Ethereum node.
+//! - [`parser`](parser): Placeholder for any parsing-related functionality.
+//! - [`writer`](writer): Implements the `StateWriter` responsible for applying state differences to the
+//!   substrate storage.
+//!
+//! ## Public Interface
+//!
+//! The main entry point for using the state sync module is through the [`create_and_run`] function.
+//!
+//! ## Functions
+//!
+//! - [`create_and_run`](create_and_run): Initializes and runs the state sync task.
+//! - [`run`](run): Defines the main logic of the state sync task.
+//! - [`u256_to_h256`](u256_to_h256): Converts a `U256` to `H256`.
+//!
+//! ## Enums
+//!
+//! - [`Error`](Error): Represents errors encountered during state syncing.
+//! - [`SyncStatus`](SyncStatus): Represents the current status of state synchronization.
+//!
+//! ## Structs
+//!
+//! - [`StateSyncConfig`](StateSyncConfig): Configuration struct for starting the state sync task.
+//! - [`SyncStatusOracle`](SyncStatusOracle): Provides information about the sync status.
+//!
+//! ## Examples
+//!
+//! ```rust
+//! # use std::path::PathBuf;
+//! # use std::sync::Arc;
+//! # use sc_client_api::backend::Backend;
+//! # use sp_blockchain::HeaderBackend;
+//! # use sp_runtime::generic::Header as GenericHeader;
+//! # use sp_runtime::traits::BlakeTwo256;
+//! # use starknet_api::state::StateDiff;
+//! # use tokio::runtime::Runtime;
+//! # use state_sync::*;
+//!
+//! # fn main() {
+//! let config_path = PathBuf::from("config.json");
+//! let madara_backend: Arc<mc_db::Backend<TestBlock>> = Arc::new(mc_db::Backend::new());
+//! let substrate_client: Arc<TestClient> = Arc::new(TestClient);
+//! let substrate_backend: Arc<TestBackend> = Arc::new(TestBackend);
+//!
+//! let result = create_and_run(
+//!     config_path,
+//!     madara_backend.clone(),
+//!     substrate_client.clone(),
+//!     substrate_backend.clone(),
+//! );
+//!
+//! match result {
+//!     Ok((future, _sync_status_oracle)) => {
+//!         let mut rt = Runtime::new().unwrap();
+//!         rt.block_on(future);
+//!     }
+//!     Err(e) => eprintln!("Error: {:?}", e),
+//! }
+//! # }
+//! ```
+//!
+//! [`create_and_run`]: fn.create_and_run.html
+//! [`run`]: fn.run.html
+//! [`u256_to_h256`]: fn.u256_to_h256.html
+//! [`Error`]: enum.Error.html
+//! [`SyncStatus`]: enum.SyncStatus.html
+//! [`StateSyncConfig`]: struct.StateSyncConfig.html
+//! [`SyncStatusOracle`]: struct.SyncStatusOracle.html
+//! ```
+
 mod ethereum;
 mod parser;
 mod writer;

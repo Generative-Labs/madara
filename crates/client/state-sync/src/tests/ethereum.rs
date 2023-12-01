@@ -7,7 +7,7 @@ use mc_db::L1L2BlockMapping;
 
 use crate::ethereum::EthereumStateFetcher;
 use crate::tests::writer::{create_temp_madara_backend, create_test_client};
-use crate::{run, u256_to_h256, StateFetcher, StateSyncConfig, SyncStatus};
+use crate::{run, u256_to_h256, StateFetcher, SyncStatus};
 
 #[tokio::test]
 async fn test_fetch_and_decode_state_diff() {

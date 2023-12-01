@@ -1,0 +1,10 @@
+{
+	"l1_start": 5854324,
+	"core_contract": "0xde29d060D45901Fb19ED6C6e959EB22d8626708e",
+	"verifier_contract": "0x5EF3C980Bf970FcE5BbC217835743ea9f0388f4F",
+	"memory_page_contract": "0x743789ff2fF82Bfb907009C9911a7dA636D34FA7",
+	"l2_start": 0,
+	"l1_url": "https://eth-goerli.g.alchemy.com/v2/nMMxqPTld6cj0DUO-4Qj2cg88Dd1MUhH",
+	"v011_diff_format_height": 28566,
+	"constructor_args_diff_height": 60000
+}

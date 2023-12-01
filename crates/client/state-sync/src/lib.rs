@@ -1,16 +1,16 @@
 //! # State Sync
 //!
-//! The state sync module facilitates synchronization of state data between Layer 1 (L1) and Layer 2 (L2)
-//! blockchains. It includes components for fetching state differences, processing them, and updating
-//! the substrate storage accordingly.
+//! The state sync module facilitates synchronization of state data between Layer 1 (L1) and Layer 2
+//! (L2) blockchains. It includes components for fetching state differences, processing them, and
+//! updating the substrate storage accordingly.
 //!
 //! ## Modules
 //!
 //! - [`ethereum`](ethereum): Contains the Ethereum state fetcher implementation for fetching state
 //!   differences from an Ethereum node.
 //! - [`parser`](parser): Placeholder for any parsing-related functionality.
-//! - [`writer`](writer): Implements the `StateWriter` responsible for applying state differences to the
-//!   substrate storage.
+//! - [`writer`](writer): Implements the `StateWriter` responsible for applying state differences to
+//!   the substrate storage.
 //!
 //! ## Public Interface
 //!
@@ -127,6 +127,8 @@ pub struct StateSyncConfig {
     pub l1_url: String,
     // The starknet state diff format changed in l1 block height.
     pub v011_diff_format_height: u64,
+    // The starknet state diff contains contract construct args.
+    pub constructor_args_diff_height: u64,
     // The number of blocks to query from L1 each time.
     pub fetch_block_step: u64,
     // The time interval for each query.
@@ -190,16 +192,14 @@ where
     C::Api: StarknetRuntimeApi<B>,
     BE: Backend<B> + 'static,
 {
-    let state_sync_config = StateSyncConfig::try_from(&config_path).map_err(|e| Error::Other(e.to_string()))?;
+    let config = StateSyncConfig::try_from(&config_path).map_err(|e| Error::Other(e.to_string()))?;
 
-    let contract_address =
-        state_sync_config.core_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
-    let verifier_address =
-        state_sync_config.verifier_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
+    let contract_address = config.core_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
+    let verifier_address = config.verifier_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
     let memory_page_address =
-        state_sync_config.memory_page_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
+        config.memory_page_contract.parse::<Address>().map_err(|e| Error::Other(e.to_string()))?;
 
-    let eth_url_list = vec![state_sync_config.l1_url];
+    let eth_url_list = vec![config.l1_url];
 
     let sync_status = Arc::new(Mutex::new(SyncStatus::SYNCING));
     let state_fetcher: EthereumStateFetcher<ethers::providers::Http> = EthereumStateFetcher::new(
@@ -207,25 +207,26 @@ where
         verifier_address,
         memory_page_address,
         eth_url_list,
-        state_sync_config.v011_diff_format_height,
+        config.v011_diff_format_height,
         sync_status.clone(),
+        config.constructor_args_diff_height,
     )?;
 
     let sync_status_oracle = Arc::new(SyncStatusOracle { sync_status });
 
     let mut mapping = L1L2BlockMapping {
         l1_block_hash: Default::default(),
-        l1_block_number: state_sync_config.l1_start,
+        l1_block_number: config.l1_start,
         l2_block_hash: Default::default(),
-        l2_block_number: state_sync_config.l2_start,
+        l2_block_number: config.l2_start,
     };
 
     if let Ok(last_mapping) = madara_backend.meta().last_l1_l2_mapping() {
         if last_mapping.l1_block_number < mapping.l1_block_number
             || last_mapping.l2_block_number < mapping.l2_block_number
         {
-            mapping.l1_block_number = state_sync_config.l1_start;
-            mapping.l2_block_number = state_sync_config.l2_start;
+            mapping.l1_block_number = config.l1_start;
+            mapping.l2_block_number = config.l2_start;
         }
     }
 
@@ -234,7 +235,6 @@ where
     Ok((run(state_fetcher, madara_backend, substrate_client, substrate_backend), sync_status_oracle))
 }
 
-// TODO pass a config then create state_fetcher
 pub fn run<B, C, BE, SF>(
     mut state_fetcher: SF,
     madara_backend: Arc<mc_db::Backend<B>>,
@@ -260,8 +260,8 @@ where
 
         match madara_backend_clone.clone().meta().last_l1_l2_mapping() {
             Ok(mapping) => {
-                eth_from_height = mapping.l1_block_number + 1;
-                starknet_start_height = mapping.l2_block_number + 1;
+                eth_from_height = mapping.l1_block_number;
+                starknet_start_height = mapping.l2_block_number;
             }
             Err(e) => {
                 error!(target: LOG_TARGET, "read last l1 l2 mapping failed, error {:#?}.", e);

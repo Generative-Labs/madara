@@ -174,7 +174,8 @@ where
 /// # Arguments
 ///
 /// * `encoded_diff` - Encoded state difference data in the form of `U256` slices.
-/// * `with_constructor_args` - Flag indicating whether constructor arguments are present in the data.
+/// * `with_constructor_args` - Flag indicating whether constructor arguments are present in the
+///   data.
 ///
 /// # Returns
 ///
@@ -186,15 +187,12 @@ where
 /// // Example usage
 /// let result = decode_pre_011_diff(&encoded_diff, true);
 /// ```
-#[allow(dead_code)]
 pub fn decode_pre_011_diff(encoded_diff: &[U256], with_constructor_args: bool) -> Result<StateDiff, Error> {
-	let mut offset = 0;
+    let mut offset = 0;
     let num_deployments_cells = encoded_diff[offset].as_usize();
     offset += 1;
 
-	println!("~~ decode_pre_011_diff  {:#?}", num_deployments_cells );
-
-	let mut deployed_contracts: IndexMap<ContractAddress, ClassHash> = IndexMap::new();
+    let mut deployed_contracts: IndexMap<ContractAddress, ClassHash> = IndexMap::new();
     let mut nonces: IndexMap<ContractAddress, Nonce> = IndexMap::new();
     let declared_classes: IndexMap<ClassHash, (CompiledClassHash, ContractClass)> = IndexMap::new();
     let replaced_classes: IndexMap<ContractAddress, ClassHash> = IndexMap::new();
@@ -218,7 +216,7 @@ pub fn decode_pre_011_diff(encoded_diff: &[U256], with_constructor_args: bool) -
         }
     }
 
-    let updates_len = encoded_diff[offset].as_usize();
+    let updates_len = encoded_diff[offset].low_u64();
     offset += 1;
     for _i in 0..updates_len {
         let address = convert_to_starknet_type!(encoded_diff[offset], ContractAddress)?;
@@ -239,7 +237,6 @@ pub fn decode_pre_011_diff(encoded_diff: &[U256], with_constructor_args: bool) -
         let mut diffs = IndexMap::new();
         for _ in 0..num_updates {
             let key = convert_to_starknet_type!(encoded_diff[offset], StorageKey)?;
-
             offset += 1;
 
             let value = convert_to_starknet_type!(encoded_diff[offset], StarkFelt)?;

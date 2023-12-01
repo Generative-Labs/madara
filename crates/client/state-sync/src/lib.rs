@@ -110,32 +110,32 @@ use writer::StateWriter;
 
 const LOG_TARGET: &str = "state-sync";
 
-// StateSyncConfig defines the parameters to start the task of syncing states from L1.
+/// StateSyncConfig defines the parameters to start the task of syncing states from L1.
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct StateSyncConfig {
-    // The block from which syncing starts on L1.
+    /// The block from which syncing starts on L1.
     pub l1_start: u64,
-    // The address of core contract on L1.
+    /// The address of the core contract on L1.
     pub core_contract: String,
-    // The address of verifier contract on L1.
+    /// The address of the verifier contract on L1.
     pub verifier_contract: String,
-    // The address of memory page contract on L1.
+    /// The address of the memory page contract on L1.
     pub memory_page_contract: String,
-    // The block from which syncing starts on L2.
+    /// The block from which syncing starts on L2.
     pub l2_start: u64,
-    // The RPC url for L1.
+    /// The RPC URLs for L1.
     pub l1_url_list: Vec<String>,
-    // The starknet state diff format changed in l1 block height.
+    /// The starknet state diff format changed in L1 block height.
     pub v011_diff_format_height: u64,
-    // The starknet state diff contains contract construct args.
+    /// The starknet state diff contains contract construct args.
     pub constructor_args_diff_height: u64,
-    // The number of blocks to query from L1 each time.
+    /// The number of blocks to query from L1 each time.
     #[serde(default)]
     pub fetch_block_step: u64,
-    // The time interval for each query.
+    /// The time interval for each query.
     #[serde(default)]
     pub syncing_fetch_interval: u64,
-    // The time interval for each query.
+    /// The time interval for each query.
     #[serde(default)]
     pub synced_fetch_interval: u64,
 }
@@ -149,10 +149,14 @@ impl TryFrom<&PathBuf> for StateSyncConfig {
     }
 }
 
+/// Struct representing the fetched state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchState {
+    /// Mapping between blocks from L1 to L2.
     pub l1_l2_block_mapping: L1L2BlockMapping,
+    /// State root after applying the state diff.
     pub post_state_root: U256,
+    /// State difference between two blocks.
     pub state_diff: StateDiff,
 }
 
@@ -168,8 +172,21 @@ impl Ord for FetchState {
     }
 }
 
+/// StateFetcher defines a trait for fetching StateDiff from L1.
 #[async_trait]
 pub trait StateFetcher {
+    /// Retrieves the StateDiff from L1.
+    ///
+    /// # Arguments
+    ///
+    /// * `l1_from` - The starting block number on L1.
+    /// * `l2_start` - The starting block number on L2.
+    /// * `client` - An Arc pointer to a type that implements ProvideRuntimeApi and HeaderBackend
+    ///   traits, where its associated Api implements StarknetRuntimeApi.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a Vec of FetchState or an Error.
     async fn state_diff<B, C>(&mut self, l1_from: u64, l2_start: u64, client: Arc<C>) -> Result<Vec<FetchState>, Error>
     where
         B: BlockT,
@@ -177,12 +194,41 @@ pub trait StateFetcher {
         C::Api: StarknetRuntimeApi<B>;
 }
 
+/// Enum representing the synchronization status.
 #[derive(Debug, PartialEq, Eq)]
 pub enum SyncStatus {
+    /// Represents the status when synchronization is in progress.
     SYNCING,
+    /// Represents the status when synchronization is completed.
     SYNCED,
 }
 
+/// Creates and runs a state diff sync task along with a SyncOracle.
+///
+/// This function initializes a state diff sync task and SyncOracle based on the provided
+/// parameters.
+///
+/// # Arguments
+///
+/// * `config_path` - The path to the configuration file.
+/// * `madara_backend` - Arc pointer to the Madara backend.
+/// * `substrate_client` - Arc pointer to the Substrate client.
+/// * `substrate_backend` - Arc pointer to the Substrate backend.
+///
+/// # Returns
+///
+/// A Result containing a tuple with a Future and an Arc to the SyncOracle, or an Error.
+///
+/// # Generic Parameters
+///
+/// * `B` - Block type with Hash of H256 and Header of GenericHeader<u32, BlakeTwo256>.
+/// * `C` - Type implementing HeaderBackend<B>, ProvideRuntimeApi<B>, and 'static.
+/// * `BE` - Type implementing Backend<B> and 'static.
+///
+/// # Errors
+///
+/// Returns an Error if there are issues parsing configuration, contract addresses, or writing
+/// mapping data.
 pub fn create_and_run<B, C, BE>(
     config_path: PathBuf,
     madara_backend: Arc<mc_db::Backend<B>>,
@@ -236,6 +282,29 @@ where
     Ok((run(state_fetcher, madara_backend, substrate_client, substrate_backend), sync_status_oracle))
 }
 
+/// Creates an asynchronous task for state synchronization and initiates its execution.
+///
+/// This function creates an asynchronous task for state synchronization using the provided
+/// state_fetcher and other backend parameters. It then initiates the execution of this task
+/// by returning it as a Future to be executed asynchronously by the runtime.
+///
+/// # Arguments
+///
+/// * `state_fetcher` - The state fetcher responsible for fetching state differences.
+/// * `madara_backend` - Arc pointer to the Madara backend.
+/// * `substrate_client` - Arc pointer to the Substrate client.
+/// * `substrate_backend` - Arc pointer to the Substrate backend.
+///
+/// # Returns
+///
+/// A Future representing the asynchronous state synchronization task.
+///
+/// # Generic Parameters
+///
+/// * `B` - Block type with Hash of H256 and Header of GenericHeader<u32, BlakeTwo256>.
+/// * `C` - Type implementing HeaderBackend<B>, ProvideRuntimeApi<B>, and 'static.
+/// * `BE` - Type implementing Backend<B> and 'static.
+/// * `SF` - Type implementing StateFetcher, Send, Sync, and 'static.
 pub fn run<B, C, BE, SF>(
     mut state_fetcher: SF,
     madara_backend: Arc<mc_db::Backend<B>>,
@@ -318,6 +387,19 @@ where
     future::select(Box::pin(fetcher_task), Box::pin(state_write_task)).map(|_| ())
 }
 
+/// Converts a U256 value to an H256 value.
+///
+/// This helper function takes a U256 value and converts it to an H256 value by
+/// converting the U256 value to a big-endian byte array, then copying the first
+/// 32 bytes into an H256 array to obtain the H256 value.
+///
+/// # Arguments
+///
+/// * `u256` - The U256 value to be converted to H256.
+///
+/// # Returns
+///
+/// An H256 value converted from the provided U256 value.
 fn u256_to_h256(u256: U256) -> H256 {
     let mut bytes = [0; 32];
     u256.to_big_endian(&mut bytes);
@@ -326,19 +408,31 @@ fn u256_to_h256(u256: U256) -> H256 {
     H256::from(h256_bytes)
 }
 
+/// Represents various error types that can occur during state synchronization or interaction with
+/// L1/L2 chains.
 #[derive(Debug, Clone)]
 pub enum Error {
+    /// Error indicating that the data is already present in the chain.
     AlreadyInChain,
+    /// Error indicating an unknown block or data on the chain.
     UnknownBlock,
+    /// Error occurring during transaction construction with a specific message.
     ConstructTransaction(String),
+    /// Error while committing data to storage with a specific message.
     CommitStorage(String),
+    /// Error related to connection issues with L1 chain with a specific message.
     L1Connection(String),
+    /// Error decoding an event from L1.
     L1EventDecode,
+    /// Error related to state handling on L1 with a specific message.
     L1StateError(String),
+    /// Error due to a type mismatch or inconsistency with a specific message.
     TypeError(String),
+    /// Any other unspecified error with a specific message.
     Other(String),
 }
 
+/// Represents a SyncStatusOracle used for querying synchronization status.
 struct SyncStatusOracle {
     sync_status: Arc<Mutex<SyncStatus>>,
 }

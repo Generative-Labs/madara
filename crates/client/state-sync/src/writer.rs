@@ -170,7 +170,8 @@ where
             })
             .map_err(|e| Error::Other(e.to_string()))?;
 
-        info!(target: LOG_TARGET, "~~ apply state diff {} {:#?}", starknet_block_number, starknet_block_hash);
+        info!(target: LOG_TARGET, "~~ apply state diff. starknet block number: {}, starknet block hash: {:#?}", 
+            starknet_block_number, starknet_block_hash);
         Ok(())
     }
 

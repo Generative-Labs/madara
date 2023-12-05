@@ -97,7 +97,7 @@ use futures::channel::mpsc;
 use futures::prelude::*;
 use log::error;
 use mc_db::L1L2BlockMapping;
-use pallet_starknet::runtime_api::StarknetRuntimeApi;
+use pallet_starknet_runtime_api::StarknetRuntimeApi;
 use sc_client_api::backend::Backend;
 use serde::{Deserialize, Serialize};
 use sp_api::ProvideRuntimeApi;

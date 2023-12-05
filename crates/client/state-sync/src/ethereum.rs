@@ -661,4 +661,10 @@ impl<P: JsonRpcClient + Clone> StateFetcher for EthereumStateFetcher<P> {
 
         Ok(states_res)
     }
+
+	async fn get_highest_block_number(&mut self) -> Result<u64, Error> {
+		let highest_eth_block_number =
+			self.http_provider.get_block_number().await.map_err(|e| Error::L1Connection(e.to_string()))?.as_u64();
+		Ok(highest_eth_block_number)
+	}
 }

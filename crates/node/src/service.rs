@@ -348,7 +348,12 @@ pub fn new_full(
             None
         }
         #[cfg(feature = "with-hotstuff-runtime")]
-        None
+        {
+            net_config.add_notification_protocol(hotstuff_consensus::config::hotstuff_peers_set_config(
+                hotstuff_protocol_name.clone(),
+            ));
+            None
+        }
     } else {
         None
     };

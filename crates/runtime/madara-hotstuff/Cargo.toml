@@ -1,8 +1,8 @@
 [package]
-name = "madara-runtime"
+name = "madara-hotstuff-runtime"
 version.workspace = true
 edition.workspace = true
-description = "Madara runtime."
+description = "Madara runtime with hotstuff consensus."
 authors = [
   "Abdelhamid Bakhta <@abdelhamidbakhta>",
   "Substrate DevHub <https://github.com/substrate-developer-hub>",
@@ -34,7 +34,6 @@ frame-support = { workspace = true }
 frame-system = { workspace = true }
 frame-try-runtime = { workspace = true, optional = true }
 pallet-aura = { workspace = true }
-pallet-grandpa = { workspace = true }
 pallet-timestamp = { workspace = true }
 sp-core = { workspace = true }
 sp-runtime = { workspace = true }
@@ -62,6 +61,10 @@ blockifier = { workspace = true }
 starknet-ff = { workspace = true }
 starknet_api = { workspace = true }
 
+# Hotstuff dependencies
+hotstuff-primitives = { workspace = true }
+pallet-hotstuff = { workspace = true }
+
 [build-dependencies]
 substrate-wasm-builder = { workspace = true }
 
@@ -80,7 +83,6 @@ std = [
   "frame-try-runtime/std",
   # Frame pallets dependencies
   "pallet-aura/std",
-  "pallet-grandpa/std",
   "pallet-timestamp/std",
   # Substrate primitives dependencies
   "sp-api/std",
@@ -99,6 +101,9 @@ std = [
   "scale-info/std",
   "blockifier/std",
   "starknet_api/std",
+  # Hotstuff consensus dependencies
+  "pallet-hotstuff/std",
+  "hotstuff-primitives/std",
 ]
 try-runtime = [
   "pallet-timestamp/try-runtime",
@@ -107,9 +112,10 @@ try-runtime = [
   "frame-system/try-runtime",
   "frame-support/try-runtime",
   "pallet-aura/try-runtime",
-  "pallet-grandpa/try-runtime",
   # Madara pallets
   "pallet-starknet/try-runtime",
+  # Hotstuff pallet
+  "pallet-hotstuff/try-runtime",
 ]
 default = ["std"]
 madara-state-root = []
@@ -119,7 +125,6 @@ runtime-benchmarks = [
   "frame-support/runtime-benchmarks",
   "frame-system-benchmarking/runtime-benchmarks",
   "frame-system/runtime-benchmarks",
-  "pallet-grandpa/runtime-benchmarks",
   "pallet-timestamp/runtime-benchmarks",
   "sp-runtime/runtime-benchmarks",
   # Madara pallets

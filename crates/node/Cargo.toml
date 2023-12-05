@@ -78,6 +78,7 @@ frame-benchmarking-cli = { workspace = true }
 # Starknet
 blockifier = { workspace = true }
 hex = { workspace = true }
+madara-hotstuff-runtime = { workspace = true }
 madara-runtime = { workspace = true }
 mc-commitment-state-diff = { workspace = true }
 mc-data-availability = { workspace = true }
@@ -102,6 +103,10 @@ reqwest = { workspace = true }
 serde_json = { workspace = true }
 url = { workspace = true }
 
+# Hotstuff dependencies
+hotstuff-consensus = { workspace = true }
+hotstuff-primitives = { workspace = true }
+
 [build-dependencies]
 substrate-build-script-utils = { workspace = true }
 
@@ -120,3 +125,5 @@ disable-transaction-fee = ["madara-runtime/disable-transaction-fee"]
 # Load sharingan chain-specs during the compilation
 # This is the way to run a sharingan chain
 sharingan = []
+
+with-hotstuff-runtime = []

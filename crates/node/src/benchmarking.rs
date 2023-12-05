@@ -23,6 +23,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(feature = "with-hotstuff-runtime")]
+use madara_hotstuff_runtime as runtime;
+#[cfg(not(feature = "with-hotstuff-runtime"))]
 use madara_runtime as runtime;
 use runtime::SystemCall;
 use sc_cli::Result;

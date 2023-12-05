@@ -62,9 +62,6 @@ blockifier = { workspace = true }
 starknet-ff = { workspace = true }
 starknet_api = { workspace = true }
 
-# Hotstuff dependencies
-hotstuff-primitives = { workspace = true }
-pallet-hotstuff = { workspace = true }
 
 [build-dependencies]
 substrate-wasm-builder = { workspace = true }
@@ -103,9 +100,6 @@ std = [
   "scale-info/std",
   "blockifier/std",
   "starknet_api/std",
-  # Hotstuff consensus dependencies
-  "pallet-hotstuff/std",
-  "hotstuff-primitives/std",
 ]
 try-runtime = [
   "pallet-timestamp/try-runtime",
@@ -117,8 +111,6 @@ try-runtime = [
   "pallet-grandpa/try-runtime",
   # Madara pallets
   "pallet-starknet/try-runtime",
-  # Hotstuff pallet
-  "pallet-hotstuff/try-runtime",
 ]
 default = ["std"]
 madara-state-root = []

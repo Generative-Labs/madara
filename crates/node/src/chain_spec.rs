@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use hotstuff_primitives::AuthorityId as HotStuffId;
 #[cfg(feature = "with-hotstuff-runtime")]
-use madara_hotstuff_runtime::{AuraConfig, GenesisConfig, HotstuffConfig, SealingMode, SystemConfig, WASM_BINARY};
+use madara_hotstuff_runtime::{
+    AuraConfig, HotstuffConfig, RuntimeGenesisConfig, SealingMode, SystemConfig, WASM_BINARY,
+};
 #[cfg(not(feature = "with-hotstuff-runtime"))]
 use madara_runtime::{AuraConfig, GrandpaConfig, RuntimeGenesisConfig, SealingMode, SystemConfig, WASM_BINARY};
 use mp_felt::Felt252Wrapper;

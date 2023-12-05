@@ -15,7 +15,6 @@ use hotstuff_consensus::LinkHalf as HotstuffLinkHalf;
 use madara_hotstuff_runtime::{self, opaque::Block, Hash, RuntimeApi, SealingMode, StarknetHasher, SLOT_DURATION};
 #[cfg(not(feature = "with-hotstuff-runtime"))]
 use madara_runtime::{self, opaque::Block, Hash, RuntimeApi, SealingMode, StarknetHasher, SLOT_DURATION};
-use mc_block_proposer::ProposerFactory;
 use mc_commitment_state_diff::{log_commitment_state_diff, CommitmentStateDiffWorker};
 use mc_data_availability::avail::config::AvailConfig;
 use mc_data_availability::avail::AvailClient;
@@ -98,6 +97,7 @@ type BoxBlockImport = sc_consensus::BoxBlockImport<Block>;
 
 /// The minimum period of blocks on which justifications will be
 /// imported and generated.
+#[cfg(not(feature = "with-hotstuff-runtime"))]
 const GRANDPA_JUSTIFICATION_PERIOD: u32 = 512;
 
 // Link half used in different consensus.
@@ -120,14 +120,9 @@ pub fn new_partial<BIQ>(
         FullClient,
         FullBackend,
         FullSelectChain,
-        sc_consensus::DefaultImportQueue<Block, FullClient>,
+        sc_consensus::DefaultImportQueue<Block>,
         sc_transaction_pool::FullPool<Block, FullClient>,
-        (
-            BoxBlockImport<FullClient>,
-            ConsensusLinkHalf,
-            Option<Telemetry>,
-            Arc<MadaraBackend>,
-        ),
+        (BoxBlockImport, ConsensusLinkHalf, Option<Telemetry>, Arc<MadaraBackend>),
     >,
     ServiceError,
 >
@@ -141,7 +136,7 @@ where
         Option<TelemetryHandle>,
         Arc<FullBackend>,
         Arc<MadaraBackend>,
-    ) -> Result<(BasicImportQueue, BoxBlockImport, ConsensusLinkHalf), ServiceError>,,
+    ) -> Result<(BasicImportQueue, BoxBlockImport, ConsensusLinkHalf), ServiceError>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -227,7 +222,7 @@ pub fn build_common_import_queue(
     telemetry: Option<TelemetryHandle>,
     #[allow(unused_variables)] backend: Arc<FullBackend>,
     _madara_backend: Arc<MadaraBackend>,
-) -> -> Result<(BasicImportQueue, BoxBlockImport, ConsensusLinkHalf), ServiceError>
+) -> Result<(BasicImportQueue, BoxBlockImport, ConsensusLinkHalf), ServiceError>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient>,
     RuntimeApi: Send + Sync + 'static,
@@ -238,6 +233,7 @@ where
     #[cfg(not(feature = "with-hotstuff-runtime"))]
     let (block_import, link) = sc_consensus_grandpa::block_import(
         client.clone(),
+        GRANDPA_JUSTIFICATION_PERIOD,
         &client as &Arc<_>,
         sc_consensus::LongestChain::new(backend.clone()),
         telemetry.clone(),
@@ -595,35 +591,36 @@ pub fn new_full(
             // need a keystore, regardless of which protocol we use below.
             let keystore = if role.is_authority() { Some(keystore_container.keystore()) } else { None };
 
-        let grandpa_config = sc_consensus_grandpa::Config {
-            // FIXME #1578 make this available through chainspec
-            gossip_duration: Duration::from_millis(333),
-            justification_generation_period: GRANDPA_JUSTIFICATION_PERIOD,
-            name: Some(name),
-            observer_enabled: false,
-            keystore,
-            local_role: role,
-            telemetry: telemetry.as_ref().map(|x| x.handle()),
-            protocol_name: grandpa_protocol_name,
-        };
+            let grandpa_config = sc_consensus_grandpa::Config {
+                // FIXME #1578 make this available through chainspec
+                gossip_duration: Duration::from_millis(333),
+                justification_generation_period: GRANDPA_JUSTIFICATION_PERIOD,
+                name: Some(name),
+                observer_enabled: false,
+                keystore,
+                local_role: role,
+                telemetry: telemetry.as_ref().map(|x| x.handle()),
+                protocol_name: grandpa_protocol_name,
+            };
 
-        // start the full GRANDPA voter
-        // NOTE: non-authorities could run the GRANDPA observer protocol, but at
-        // this point the full voter should provide better guarantees of block
-        // and vote data availability than the observer. The observer has not
-        // been tested extensively yet and having most nodes in a network run it
-        // could lead to finality stalls.
-        let grandpa_config = sc_consensus_grandpa::GrandpaParams {
-            config: grandpa_config,
-            link: grandpa_link,
-            network,
-            sync: Arc::new(sync_service),
-            voting_rule: sc_consensus_grandpa::VotingRulesBuilder::default().build(),
-            prometheus_registry,
-            shared_voter_state: SharedVoterState::empty(),
-            telemetry: telemetry.as_ref().map(|x| x.handle()),
-            offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
-        };
+            if let ConsensusLinkHalf::Link(link) = link {
+                // start the full GRANDPA voter
+                // NOTE: non-authorities could run the GRANDPA observer protocol, but at
+                // this point the full voter should provide better guarantees of block
+                // and vote data availability than the observer. The observer has not
+                // been tested extensively yet and having most nodes in a network run it
+                // could lead to finality stalls.
+                let grandpa_config = sc_consensus_grandpa::GrandpaParams {
+                    config: grandpa_config,
+                    link,
+                    network,
+                    sync: Arc::new(sync_service),
+                    voting_rule: sc_consensus_grandpa::VotingRulesBuilder::default().build(),
+                    prometheus_registry,
+                    shared_voter_state: SharedVoterState::empty(),
+                    telemetry: telemetry.as_ref().map(|x| x.handle()),
+                    offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
+                };
 
                 // the GRANDPA voter task is considered infallible, i.e.
                 // if it fails we take down the service with it.

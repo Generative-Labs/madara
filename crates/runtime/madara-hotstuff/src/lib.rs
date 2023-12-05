@@ -30,15 +30,15 @@ use frame_system::{EventRecord, Phase};
 use hotstuff_primitives::AuthorityId as HotstuffId;
 use mp_felt::Felt252Wrapper;
 use mp_transactions::compute_hash::ComputeTransactionHash;
-use mp_transactions::{Transaction, TxType, UserTransaction};
+use mp_transactions::{Transaction, UserTransaction};
 // Hotstuff consensus authority id.
 pub use pallet_hotstuff;
 /// Import the StarkNet pallet.
 pub use pallet_starknet;
 use pallet_starknet::pallet::Error as PalletError;
-use pallet_starknet::runtime_api::StarknetTransactionExecutionError;
 use pallet_starknet::Call::{consume_l1_message, declare, deploy_account, invoke};
 use pallet_starknet::{Config, Event};
+use pallet_starknet_runtime_api::StarknetTransactionExecutionError;
 pub use pallet_timestamp::Call as TimestampCall;
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
@@ -61,12 +61,7 @@ pub use types::*;
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
-    pub struct Runtime
-    where
-        Block = Block,
-        NodeBlock = opaque::Block,
-        UncheckedExtrinsic = UncheckedExtrinsic,
-    {
+    pub struct Runtime {
         System: frame_system,
         Timestamp: pallet_timestamp,
         Aura: pallet_aura,
@@ -221,7 +216,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl pallet_starknet::runtime_api::StarknetRuntimeApi<Block> for Runtime {
+    impl pallet_starknet_runtime_api::StarknetRuntimeApi<Block> for Runtime {
 
         fn get_storage_at(address: ContractAddress, key: StorageKey) -> Result<StarkFelt, DispatchError> {
             Starknet::get_storage_at(address, key)
@@ -247,8 +242,12 @@ impl_runtime_apis! {
             Starknet::chain_id()
         }
 
-        fn estimate_fee(transaction: UserTransaction, is_query: bool) -> Result<(u64, u64), DispatchError> {
-            Starknet::estimate_fee(transaction, is_query)
+        fn is_transaction_fee_disabled() -> bool {
+            Starknet::is_transaction_fee_disabled()
+        }
+
+        fn estimate_fee(transactions: Vec<UserTransaction>) -> Result<Vec<(u64, u64)>, DispatchError> {
+            Starknet::estimate_fee(transactions)
         }
 
         fn get_starknet_events_and_their_associated_tx_hash(block_extrinsics: Vec<<Block as BlockT>::Extrinsic>, chain_id: Felt252Wrapper) -> Vec<(Felt252Wrapper, StarknetEvent)> {
@@ -286,7 +285,7 @@ impl_runtime_apis! {
             }).collect::<Vec<Transaction>>()
         }
 
-        fn get_events_for_tx_hash(extrinsics: Vec<<Block as BlockT>::Extrinsic>, chain_id: Felt252Wrapper, tx_hash: Felt252Wrapper) -> Option<(TxType, Vec<StarknetEvent>)> {
+        fn get_index_and_tx_for_tx_hash(extrinsics: Vec<<Block as BlockT>::Extrinsic>, chain_id: Felt252Wrapper, tx_hash: Felt252Wrapper) -> Option<(u32, Transaction)> {
             // Find our tx and it's index
             let (tx_index, tx) =  extrinsics.into_iter().enumerate().find(|(_, xt)| {
                 let computed_tx_hash = match &xt.function {
@@ -299,16 +298,19 @@ impl_runtime_apis! {
 
                 computed_tx_hash == tx_hash
             })?;
-
-            // Compute it's tx type
-            let tx_type = match tx.function {
-                RuntimeCall::Starknet( invoke { .. }) => TxType::Invoke,
-                RuntimeCall::Starknet( declare { .. }) => TxType::Declare,
-                RuntimeCall::Starknet( deploy_account { .. }) => TxType::DeployAccount,
-                RuntimeCall::Starknet( consume_l1_message { .. }) => TxType::L1Handler,
-                _ => panic!("The previous match made sure that at this point tx is one of those starknet calls"),
+            let transaction = match tx.function {
+                RuntimeCall::Starknet( invoke { transaction }) => Transaction::Invoke(transaction),
+                RuntimeCall::Starknet( declare { transaction, .. }) => Transaction::Declare(transaction),
+                RuntimeCall::Starknet( deploy_account { transaction }) => Transaction::DeployAccount(transaction),
+                RuntimeCall::Starknet( consume_l1_message { transaction, .. }) => Transaction::L1Handler(transaction),
+                _ => unreachable!("The previous match made sure that at this point tx is one of those starknet calls"),
             };
 
+            let tx_index = u32::try_from(tx_index).expect("unexpected number of transactions");
+            Some((tx_index, transaction))
+        }
+
+        fn get_events_for_tx_by_index(tx_index: u32) -> Option<Vec<StarknetEvent>> {
 
             // Skip all the events that are not related to our tx
             let event_iter = System::read_events_no_consensus().filter_map(|event| {
@@ -322,7 +324,7 @@ impl_runtime_apis! {
                     _ => return true
                 };
 
-                tx_index as u32 != index
+                tx_index != index
              });
 
             // Collect all the events related to our tx
@@ -334,22 +336,22 @@ impl_runtime_apis! {
                     _ => panic!("The previous iteration made sure at this point phase is of ApplyExtrinsic variant"),
                 };
 
-                tx_index as u32 == index
+                tx_index == index
             }).map(|(_, event)| event).collect();
 
-            Some((tx_type, events))
+            Some(events)
         }
 
         fn get_tx_execution_outcome(tx_hash: TransactionHash) -> Option<Vec<u8>> {
            Starknet::tx_revert_error(tx_hash).map(|s| s.into_bytes())
         }
 
-        fn get_block_context() -> pallet_starknet::runtime_api::BlockContext {
-            Starknet::get_block_context().into()
-        }        
+        fn get_block_context() -> pallet_starknet_runtime_api::BlockContext {
+           Starknet::get_block_context().into()
+        }
     }
 
-    impl pallet_starknet::runtime_api::ConvertTransactionRuntimeApi<Block> for Runtime {
+    impl pallet_starknet_runtime_api::ConvertTransactionRuntimeApi<Block> for Runtime {
         fn convert_transaction(transaction: UserTransaction) -> Result<UncheckedExtrinsic, DispatchError> {
             let call = match transaction {
                 UserTransaction::Declare(tx, contract_class) => {

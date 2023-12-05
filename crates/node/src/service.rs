@@ -26,11 +26,11 @@ use mc_data_availability::ethereum::EthereumClient;
 use mc_data_availability::{DaClient, DaLayer, DataAvailabilityWorker};
 use mc_mapping_sync::MappingSyncWorker;
 use mc_storage::overrides_handle;
-use mc_transaction_pool::FullPool;
 use mp_sequencer_address::{
     InherentDataProvider as SeqAddrInherentDataProvider, DEFAULT_SEQUENCER_ADDRESS, SEQ_ADDR_STORAGE_KEY,
 };
 use prometheus_endpoint::Registry;
+use sc_basic_authorship::ProposerFactory;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
 use sc_consensus::BasicQueue;
 use sc_consensus_aura::{SlotProportion, StartAuraParams};
@@ -40,12 +40,12 @@ pub use sc_executor::NativeElseWasmExecutor;
 use sc_service::error::Error as ServiceError;
 use sc_service::{new_db_backend, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryHandle, TelemetryWorker};
+use sc_transaction_pool::FullPool;
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::offchain::OffchainStorage;
-use sp_api::{ConstructRuntimeApi, TransactionFor};
+use sp_api::ConstructRuntimeApi;
 use sp_consensus_aura::sr25519::AuthorityPair as AuraPair;
 use sp_offchain::STORAGE_PREFIX;
-use sp_runtime::traits::BlakeTwo256;
-use sp_trie::PrefixedMemoryDB;
 
 use crate::genesis_block::MadaraGenesisBlockBuilder;
 use crate::rpc::StarknetDeps;
@@ -93,8 +93,12 @@ pub(crate) type FullClient = sc_service::TFullClient<Block, RuntimeApi, NativeEl
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
-type BasicImportQueue<Client> = sc_consensus::DefaultImportQueue<Block, Client>;
-type BoxBlockImport<Client> = sc_consensus::BoxBlockImport<Block, TransactionFor<Client, Block>>;
+type BasicImportQueue = sc_consensus::DefaultImportQueue<Block>;
+type BoxBlockImport = sc_consensus::BoxBlockImport<Block>;
+
+/// The minimum period of blocks on which justifications will be
+/// imported and generated.
+const GRANDPA_JUSTIFICATION_PERIOD: u32 = 512;
 
 // Link half used in different consensus.
 pub enum ConsensusLinkHalf {
@@ -117,8 +121,13 @@ pub fn new_partial<BIQ>(
         FullBackend,
         FullSelectChain,
         sc_consensus::DefaultImportQueue<Block, FullClient>,
-        mc_transaction_pool::FullPool<Block, FullClient>,
-        (BoxBlockImport<FullClient>, ConsensusLinkHalf, Option<Telemetry>, Arc<MadaraBackend>),
+        sc_transaction_pool::FullPool<Block, FullClient>,
+        (
+            BoxBlockImport<FullClient>,
+            ConsensusLinkHalf,
+            Option<Telemetry>,
+            Arc<MadaraBackend>,
+        ),
     >,
     ServiceError,
 >
@@ -132,8 +141,7 @@ where
         Option<TelemetryHandle>,
         Arc<FullBackend>,
         Arc<MadaraBackend>,
-    )
-        -> Result<(BasicImportQueue<FullClient>, BoxBlockImport<FullClient>, ConsensusLinkHalf), ServiceError>,
+    ) -> Result<(BasicImportQueue, BoxBlockImport, ConsensusLinkHalf), ServiceError>,,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -180,8 +188,8 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let transaction_pool = mc_transaction_pool::BasicPool::new_full(
-        mc_transaction_pool::Options::from(config.transaction_pool.clone()),
+    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
+        config.transaction_pool.clone(),
         config.role.is_authority().into(),
         config.prometheus_registry(),
         task_manager.spawn_essential_handle(),
@@ -219,7 +227,7 @@ pub fn build_common_import_queue(
     telemetry: Option<TelemetryHandle>,
     #[allow(unused_variables)] backend: Arc<FullBackend>,
     _madara_backend: Arc<MadaraBackend>,
-) -> Result<(BasicImportQueue<FullClient>, BoxBlockImport<FullClient>, ConsensusLinkHalf), ServiceError>
+) -> -> Result<(BasicImportQueue, BoxBlockImport, ConsensusLinkHalf), ServiceError>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient>,
     RuntimeApi: Send + Sync + 'static,
@@ -271,7 +279,7 @@ pub fn build_manual_seal_import_queue(
     _telemetry: Option<TelemetryHandle>,
     _backend: Arc<FullBackend>,
     _madara_backend: Arc<MadaraBackend>,
-) -> Result<(BasicImportQueue<FullClient>, BoxBlockImport<FullClient>, ConsensusLinkHalf), ServiceError>
+) -> Result<(BasicImportQueue, BoxBlockImport, ConsensusLinkHalf), ServiceError>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient>,
     RuntimeApi: Send + Sync + 'static,
@@ -359,10 +367,26 @@ pub fn new_full(
             import_queue,
             block_announce_validator_builder: None,
             warp_sync_params,
+            block_relay: None,
         })?;
 
     if config.offchain_worker.enabled {
-        sc_service::build_offchain_workers(&config, task_manager.spawn_handle(), client.clone(), network.clone());
+        task_manager.spawn_handle().spawn(
+            "offchain-workers-runner",
+            "offchain-worker",
+            sc_offchain::OffchainWorkers::new(sc_offchain::OffchainWorkerOptions {
+                runtime_api_provider: client.clone(),
+                is_validator: config.role.is_authority(),
+                keystore: Some(keystore_container.keystore()),
+                offchain_db: backend.offchain_storage(),
+                transaction_pool: Some(OffchainTransactionPoolFactory::new(transaction_pool.clone())),
+                network_provider: network.clone(),
+                enable_http_requests: true,
+                custom_extensions: |_| vec![],
+            })
+            .run(client.clone(), task_manager.spawn_handle())
+            .boxed(),
+        );
     }
 
     let role = config.role.clone();
@@ -498,6 +522,7 @@ pub fn new_full(
                 &task_manager,
                 prometheus_registry.as_ref(),
                 commands_stream,
+                telemetry,
             )?;
 
             network_starter.start_network();
@@ -508,8 +533,9 @@ pub fn new_full(
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
-            transaction_pool,
+            transaction_pool.clone(),
             prometheus_registry.as_ref(),
+            telemetry.as_ref().map(|x| x.handle()),
         );
 
         let slot_duration = sc_consensus_aura::slot_duration(&*client)?;
@@ -569,35 +595,35 @@ pub fn new_full(
             // need a keystore, regardless of which protocol we use below.
             let keystore = if role.is_authority() { Some(keystore_container.keystore()) } else { None };
 
-            let grandpa_config = sc_consensus_grandpa::Config {
-                // FIXME #1578 make this available through chainspec
-                gossip_duration: Duration::from_millis(333),
-                justification_period: 512,
-                name: Some(name),
-                observer_enabled: false,
-                keystore,
-                local_role: role,
-                telemetry: telemetry.as_ref().map(|x| x.handle()),
-                protocol_name: grandpa_protocol_name,
-            };
+        let grandpa_config = sc_consensus_grandpa::Config {
+            // FIXME #1578 make this available through chainspec
+            gossip_duration: Duration::from_millis(333),
+            justification_generation_period: GRANDPA_JUSTIFICATION_PERIOD,
+            name: Some(name),
+            observer_enabled: false,
+            keystore,
+            local_role: role,
+            telemetry: telemetry.as_ref().map(|x| x.handle()),
+            protocol_name: grandpa_protocol_name,
+        };
 
-            if let ConsensusLinkHalf::Link(link) = link {
-                // start the full GRANDPA voter
-                // NOTE: non-authorities could run the GRANDPA observer protocol, but at
-                // this point the full voter should provide better guarantees of block
-                // and vote data availability than the observer. The observer has not
-                // been tested extensively yet and having most nodes in a network run it
-                // could lead to finality stalls.
-                let grandpa_config = sc_consensus_grandpa::GrandpaParams {
-                    config: grandpa_config,
-                    link,
-                    network,
-                    sync: Arc::new(sync_service),
-                    voting_rule: sc_consensus_grandpa::VotingRulesBuilder::default().build(),
-                    prometheus_registry,
-                    shared_voter_state: SharedVoterState::empty(),
-                    telemetry: telemetry.as_ref().map(|x| x.handle()),
-                };
+        // start the full GRANDPA voter
+        // NOTE: non-authorities could run the GRANDPA observer protocol, but at
+        // this point the full voter should provide better guarantees of block
+        // and vote data availability than the observer. The observer has not
+        // been tested extensively yet and having most nodes in a network run it
+        // could lead to finality stalls.
+        let grandpa_config = sc_consensus_grandpa::GrandpaParams {
+            config: grandpa_config,
+            link: grandpa_link,
+            network,
+            sync: Arc::new(sync_service),
+            voting_rule: sc_consensus_grandpa::VotingRulesBuilder::default().build(),
+            prometheus_registry,
+            shared_voter_state: SharedVoterState::empty(),
+            telemetry: telemetry.as_ref().map(|x| x.handle()),
+            offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
+        };
 
                 // the GRANDPA voter task is considered infallible, i.e.
                 // if it fails we take down the service with it.
@@ -635,10 +661,11 @@ fn run_manual_seal_authorship(
     client: Arc<FullClient>,
     transaction_pool: Arc<FullPool<Block, FullClient>>,
     select_chain: FullSelectChain,
-    block_import: BoxBlockImport<FullClient>,
+    block_import: BoxBlockImport,
     task_manager: &TaskManager,
     prometheus_registry: Option<&Registry>,
     commands_stream: Option<mpsc::Receiver<sc_consensus_manual_seal::rpc::EngineCommand<Hash>>>,
+    telemetry: Option<Telemetry>,
 ) -> Result<(), ServiceError>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient>,
@@ -649,6 +676,7 @@ where
         client.clone(),
         transaction_pool.clone(),
         prometheus_registry,
+        telemetry.as_ref().map(|x| x.handle()),
     );
 
     thread_local!(static TIMESTAMP: RefCell<u64> = RefCell::new(0));
@@ -721,16 +749,8 @@ where
     Ok(())
 }
 
-type ChainOpsResult = Result<
-    (
-        Arc<FullClient>,
-        Arc<FullBackend>,
-        BasicQueue<Block, PrefixedMemoryDB<BlakeTwo256>>,
-        TaskManager,
-        Arc<MadaraBackend>,
-    ),
-    ServiceError,
->;
+type ChainOpsResult =
+    Result<(Arc<FullClient>, Arc<FullBackend>, BasicQueue<Block>, TaskManager, Arc<MadaraBackend>), ServiceError>;
 
 pub fn new_chain_ops(config: &mut Configuration, cache_more_things: bool) -> ChainOpsResult {
     config.keystore = sc_service::config::KeystoreConfig::InMemory;

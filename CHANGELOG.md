@@ -2,7 +2,34 @@
 
 ## Next release
 
+- dev(deps): bump starknet rs
+- test(rust-rpc-test): use undeclared contracts for declare transactions testing
+- build: update blockifier, fix divergent substrat block hash
+- chore: remove tests that run in wasm and native, only wasm from now
+- chore: split StarknetRpcApi trait in two, like in openRPC specs
+- refacto: move starknet runtime api in it's own crate
+- chore: update README.md and getting-started.md
+- chore: remove crates that have been copy-pasted from plkdtSDK
+- feat(rpc): return deployed contract address and actual fee in transaction
+  receipt
+- fix: Wait for 1 minute for transaction to be processed in
+  get_transaction_receipt rpc
+- ci: Fix starknet foundry sncast not found
+- fix: Ensure transaction checks are compatible with starknet-rs
+- ci: Run Starknet Foundry tests against Madara RPC
+- fix: add name, symbol and decimals to fee token storage
+- fix: dependencies for dockerfile and binaries
+- docs: add translation of madara beast article to spanish
+- chore: update starknet-js version in faucet-setup docs
 - dev(compilation): add incremental compilation
+- feat(rpc): add support for bulk estimate fee
+- feat: add argent multicall contract to genesis
+- chore(data-availability): update avail-subxt to version 0.4.0
+- fix(ci): setup should fetch files from local config
+- chore: deprecate `madara-app` and `madara-dev-explorer` modules
+- chore(data-availability-avail): implement fire and forget, and add ws
+  reconnection logic
+- chore: update `polkadot-sdk` to `release-polkadot-v1.3.0`
 
 ## v0.5.0
 
@@ -52,7 +79,6 @@
   madara node
 - feat(cache-option): add an option to enable aggressive caching in command-line
   parameters
-- fix: Ensure transaction checks are compatible with starknet-rs
 - feat: Added a `madara-hotstuff-runtime` runtime that replaces the Grandpa
   pallet with the HotStuff pallet
 - feat: Added two features, `madara-hotstuff-runtime` and `madara-runtime`,

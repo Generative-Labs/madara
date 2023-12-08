@@ -92,7 +92,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use ethereum::EthereumStateFetcher;
-use ethers::types::{Address, H256, U256, U64};
+use ethers::types::{Address, H256, U256};
 use futures::channel::mpsc;
 use futures::prelude::*;
 use log::error;
@@ -193,7 +193,7 @@ pub trait StateFetcher {
         C: ProvideRuntimeApi<B> + HeaderBackend<B>,
         C::Api: StarknetRuntimeApi<B>;
 
-	async fn get_highest_block_number(&mut self)-> Result<u64, Error>;
+    async fn get_highest_block_number(&mut self) -> Result<u64, Error>;
 }
 
 /// Enum representing the synchronization status.
@@ -360,19 +360,19 @@ where
                     error!(target: LOG_TARGET, "fetch state diff from l1 has error {:#?}", e);
                 }
             }
-			match state_fetcher.get_highest_block_number().await {
-				Ok(highest_block_number) =>{
-					if highest_block_number > eth_from_height {
-						continue;
-					}
-					if eth_from_height == highest_block_number {
-						tokio::time::sleep(Duration::from_secs(5)).await;
-					}
-				}
-				Err(e) => {
-					error!(target: LOG_TARGET, "get highest block number from l1 has error {:#?}", e);
-				}
-			};
+            match state_fetcher.get_highest_block_number().await {
+                Ok(highest_block_number) => {
+                    if highest_block_number > eth_from_height {
+                        continue;
+                    }
+                    if eth_from_height == highest_block_number {
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                }
+                Err(e) => {
+                    error!(target: LOG_TARGET, "get highest block number from l1 has error {:#?}", e);
+                }
+            };
         }
     };
 

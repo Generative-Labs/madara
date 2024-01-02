@@ -627,7 +627,7 @@ checksum = "5fd55a5ba1179988837d24ab4c7cc8ed6efdeff578ede0416b4225a5fca35bd0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.39",
+ "syn 2.0.40",
 ]
 
 [[package]]
@@ -2533,7 +2533,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "async-lock 3.2.0",
- "clap 4.4.10",
+ "clap 4.4.11",
  "ethers",
  "flate2",
  "lazy_static",
@@ -4530,7 +4530,7 @@ name = "hotstuff-consensus"
 version = "0.1.0"
 source = "git+https://github.com/Generative-Labs/Substrate-HotStuff.git#9a7d31a5a0a361b747e405e29291464c6efe9f69"
 dependencies = [
- "array-bytes 6.2.0",
+ "array-bytes 6.2.2",
  "async-recursion",
  "async-trait",
  "futures",
@@ -6173,7 +6173,7 @@ dependencies = [
 
 [[package]]
 name = "madara-hotstuff-runtime"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "blockifier",
  "frame-benchmarking",
@@ -6187,6 +6187,8 @@ dependencies = [
  "mp-chain-id",
  "mp-felt",
  "mp-hashers",
+ "mp-program-hash",
+ "mp-simulations",
  "mp-transactions",
  "pallet-aura",
  "pallet-hotstuff",

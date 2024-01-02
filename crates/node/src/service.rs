@@ -60,9 +60,6 @@ pub struct ExecutorDispatch;
 const MADARA_TASK_GROUP: &str = "madara";
 const DEFAULT_SETTLEMENT_RETRY_INTERVAL: Duration = Duration::from_millis(100);
 
-const MADARA_TASK_GROUP: &str = "madara";
-const DEFAULT_SETTLEMENT_RETRY_INTERVAL: Duration = Duration::from_millis(100);
-
 #[cfg(feature = "with-hotstuff-runtime")]
 impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
     /// Only enable the benchmarking host functions when we actually want to benchmark.
@@ -665,14 +662,15 @@ pub fn new_full(
                     offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
                 };
 
-        // the GRANDPA voter task is considered infallible, i.e.
-        // if it fails we take down the service with it.
-        task_manager.spawn_essential_handle().spawn_blocking(
-            "grandpa-voter",
-            None,
-            sc_consensus_grandpa::run_grandpa_voter(grandpa_config)?,
-        );
-                }
+                // the GRANDPA voter task is considered infallible, i.e.
+                // if it fails we take down the service with it.
+                task_manager.spawn_essential_handle().spawn_blocking(
+                    "grandpa-voter",
+                    None,
+                    sc_consensus_grandpa::run_grandpa_voter(grandpa_config)?,
+                );
+            }
+        }
         #[cfg(feature = "with-hotstuff-runtime")]
         {
             if let ConsensusLinkHalf::Link(link) = link {

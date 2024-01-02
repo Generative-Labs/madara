@@ -36,7 +36,7 @@ jobs:
 
       - name: Build the project
         run: |
-          cargo build --release --workspace
+          cargo build --release --features madara-runtime --workspace
 
       - name: Run integration tests
-        run: cargo test --release
+        run: cargo test --features madara-runtime --release

@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
   "crates/node",
-  "crates/runtime",
+  "crates/runtime/madara",
+  "crates/runtime/madara-hotstuff",
   "crates/pallets/starknet/runtime_api/",
   "crates/pallets/starknet",
   "crates/primitives/genesis-config/",
@@ -37,7 +38,8 @@ members = [
 # We don't want `cargo test` to trigger its tests
 default-members = [
   "crates/node",
-  "crates/runtime",
+  "crates/runtime/madara",
+  "crates/runtime/madara-hotstuff",
   "crates/pallets/starknet/runtime_api/",
   "crates/pallets/starknet",
   "crates/primitives/genesis-config/",
@@ -195,7 +197,8 @@ mc-l1-messages = { path = "crates/client/l1-messages" }
 mc-settlement = { path = "crates/client/settlement" }
 
 # Madara runtime
-madara-runtime = { path = "crates/runtime" }
+madara-runtime = { path = "crates/runtime/madara" }
+madara-hotstuff-runtime = { path = "crates/runtime/madara-hotstuff" }
 
 # Madara test runner
 madara-test-runner = { path = "madara-test-runner" }
@@ -231,6 +234,11 @@ cairo-lang-utils = { git = "https://github.com/keep-starknet-strange/cairo.git",
 # Ethers: using the same versions as in Anvil
 ethers = { git = "https://github.com/gakonst/ethers-rs", rev = "f0e5b194f09c533feb10d1a686ddb9e5946ec107" }
 ethers-solc = { git = "https://github.com/gakonst/ethers-rs", rev = "f0e5b194f09c533feb10d1a686ddb9e5946ec107" }
+
+# Hotstuff consensus
+hotstuff-consensus = { git = "https://github.com/Generative-Labs/Substrate-HotStuff.git" }
+hotstuff-primitives = { git = "https://github.com/Generative-Labs/Substrate-HotStuff.git", default-features = false }
+pallet-hotstuff = { git = "https://github.com/Generative-Labs/Substrate-HotStuff.git", default-features = false }
 
 # Other third party dependencies
 anyhow = "1.0.75"

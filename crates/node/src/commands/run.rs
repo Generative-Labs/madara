@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
 use clap::ValueHint::FilePath;
+#[cfg(feature = "with-hotstuff-runtime")]
+use madara_hotstuff_runtime::SealingMode;
+#[cfg(not(feature = "with-hotstuff-runtime"))]
 use madara_runtime::SealingMode;
 use mc_data_availability::DaLayer;
 use mc_l1_messages::config::{L1MessagesWorkerConfig, L1MessagesWorkerConfigError};
@@ -160,6 +163,7 @@ pub fn run_node(mut cli: Cli) -> Result<()> {
             None
         }
     };
+
 
     runner.run_node_until_exit(|config| async move {
         let sealing = cli.run.sealing.map(Into::into).unwrap_or_default();

@@ -620,6 +620,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-recursion"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fd55a5ba1179988837d24ab4c7cc8ed6efdeff578ede0416b4225a5fca35bd0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.39",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4515,6 +4526,61 @@ dependencies = [
 ]
 
 [[package]]
+name = "hotstuff-consensus"
+version = "0.1.0"
+source = "git+https://github.com/Generative-Labs/Substrate-HotStuff.git#9a7d31a5a0a361b747e405e29291464c6efe9f69"
+dependencies = [
+ "array-bytes 6.2.0",
+ "async-recursion",
+ "async-trait",
+ "futures",
+ "hotstuff-primitives",
+ "log",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-basic-authorship",
+ "sc-chain-spec",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-consensus-slots",
+ "sc-network",
+ "sc-network-gossip",
+ "sc-service",
+ "sc-telemetry",
+ "sc-utils",
+ "scale-info",
+ "serde",
+ "sp-api",
+ "sp-application-crypto 23.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-core 21.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "sp-inherents",
+ "sp-keyring",
+ "sp-keystore 0.27.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "sp-runtime 24.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "tokio",
+]
+
+[[package]]
+name = "hotstuff-primitives"
+version = "0.1.0"
+source = "git+https://github.com/Generative-Labs/Substrate-HotStuff.git#9a7d31a5a0a361b747e405e29291464c6efe9f69"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-application-crypto 23.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "sp-consensus-slots",
+ "sp-core 21.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "sp-inherents",
+ "sp-runtime 24.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "sp-std 8.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "sp-timestamp",
+]
+
+[[package]]
 name = "http"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6038,8 +6104,11 @@ dependencies = [
  "frame-system",
  "futures",
  "hex",
+ "hotstuff-consensus",
+ "hotstuff-primitives",
  "jsonrpsee 0.16.3",
  "log",
+ "madara-hotstuff-runtime",
  "madara-runtime",
  "mc-commitment-state-diff",
  "mc-data-availability",
@@ -6100,6 +6169,47 @@ dependencies = [
  "substrate-prometheus-endpoint",
  "try-runtime-cli",
  "url",
+]
+
+[[package]]
+name = "madara-hotstuff-runtime"
+version = "0.5.0"
+dependencies = [
+ "blockifier",
+ "frame-benchmarking",
+ "frame-executive",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "frame-try-runtime",
+ "hotstuff-primitives",
+ "mp-chain-id",
+ "mp-felt",
+ "mp-hashers",
+ "mp-transactions",
+ "pallet-aura",
+ "pallet-hotstuff",
+ "pallet-starknet",
+ "pallet-starknet-runtime-api",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-api",
+ "sp-block-builder",
+ "sp-consensus-aura",
+ "sp-core 21.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "sp-inherents",
+ "sp-offchain",
+ "sp-runtime 24.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "sp-session",
+ "sp-std 8.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+ "sp-transaction-pool",
+ "sp-version",
+ "starknet-ff",
+ "starknet_api",
+ "substrate-wasm-builder",
 ]
 
 [[package]]
@@ -7564,6 +7674,23 @@ dependencies = [
  "sp-runtime 24.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
  "sp-session",
  "sp-staking",
+ "sp-std 8.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
+]
+
+[[package]]
+name = "pallet-hotstuff"
+version = "0.1.0"
+source = "git+https://github.com/Generative-Labs/Substrate-HotStuff.git#9a7d31a5a0a361b747e405e29291464c6efe9f69"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "hotstuff-primitives",
+ "log",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime 24.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
  "sp-std 8.0.0 (git+https://github.com/paritytech/polkadot-sdk?branch=release-polkadot-v1.3.0)",
 ]
 

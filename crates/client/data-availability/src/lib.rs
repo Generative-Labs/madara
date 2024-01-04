@@ -2,6 +2,7 @@ pub mod avail;
 pub mod celestia;
 pub mod ethereum;
 mod sharp;
+pub mod starknet;
 pub mod utils;
 
 use std::marker::PhantomData;
@@ -31,6 +32,7 @@ pub enum DaLayer {
     Celestia,
     Ethereum,
     Avail,
+    Starknet,
 }
 
 /// Data availability modes in which Madara can be initialized.

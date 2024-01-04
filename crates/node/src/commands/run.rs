@@ -164,7 +164,6 @@ pub fn run_node(mut cli: Cli) -> Result<()> {
         }
     };
 
-
     runner.run_node_until_exit(|config| async move {
         let sealing = cli.run.sealing.map(Into::into).unwrap_or_default();
         let cache = cli.run.cache;

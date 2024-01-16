@@ -16,15 +16,15 @@ use madara_hotstuff_runtime::{self, opaque::Block, Hash, RuntimeApi, SealingMode
 #[cfg(not(feature = "with-hotstuff-runtime"))]
 use madara_runtime::{self, opaque::Block, Hash, RuntimeApi, SealingMode, StarknetHasher, SLOT_DURATION};
 use mc_commitment_state_diff::CommitmentStateDiffWorker;
-use mc_data_availability::avail::config::AvailConfig;
-use mc_data_availability::avail::AvailClient;
-use mc_data_availability::celestia::config::CelestiaConfig;
-use mc_data_availability::celestia::CelestiaClient;
+#[cfg(feature = "avail")]
+use mc_data_availability::avail::{config::AvailConfig, AvailClient};
+#[cfg(feature = "celestia")]
+use mc_data_availability::celestia::{config::CelestiaConfig, CelestiaClient};
 use mc_data_availability::ethereum::config::EthereumConfig;
 use mc_data_availability::ethereum::EthereumClient;
 use mc_data_availability::starknet::config::StarknetConfig;
 use mc_data_availability::starknet::StarknetClient;
-use mc_data_availability::{DaClient, DaLayer, DataAvailabilityWorker, DataAvailabilityWorkerProving};
+use mc_data_availability::{DaClient, DaLayer, DataAvailabilityWorker};
 use mc_genesis_data_provider::OnDiskGenesisConfig;
 use mc_l1_messages::config::L1MessagesWorkerConfig;
 use mc_mapping_sync::MappingSyncWorker;
@@ -491,41 +491,34 @@ pub fn new_full(
                 .for_each(|()| future::ready(())),
         );
 
-        let da_client: Box<dyn DaClient + Send + Sync> = match da_layer {
+        let da_client: Arc<dyn DaClient + Send + Sync> = match da_layer {
+            #[cfg(feature = "celestia")]
             DaLayer::Celestia => {
                 let celestia_conf = CelestiaConfig::try_from(&da_path)?;
-                Box::new(CelestiaClient::try_from(celestia_conf).map_err(|e| ServiceError::Other(e.to_string()))?)
+                Arc::new(CelestiaClient::try_from(celestia_conf).map_err(|e| ServiceError::Other(e.to_string()))?)
             }
             DaLayer::Ethereum => {
                 let ethereum_conf = EthereumConfig::try_from(&da_path)?;
-                Box::new(EthereumClient::try_from(ethereum_conf)?)
+                Arc::new(EthereumClient::try_from(ethereum_conf)?)
             }
+            #[cfg(feature = "avail")]
             DaLayer::Avail => {
                 let avail_conf = AvailConfig::try_from(&da_path)?;
-                Box::new(AvailClient::try_from(avail_conf).map_err(|e| ServiceError::Other(e.to_string()))?)
+                Arc::new(AvailClient::try_from(avail_conf).map_err(|e| ServiceError::Other(e.to_string()))?)
             }
             DaLayer::Starknet => {
                 let starknet_conf = StarknetConfig::try_from(&da_path)?;
-                Box::new(StarknetClient::try_from(starknet_conf).map_err(|e| ServiceError::Other(e.to_string()))?)
+                Arc::new(StarknetClient::try_from(starknet_conf).map_err(|e| ServiceError::Other(e.to_string()))?)
             }
         };
 
         task_manager.spawn_essential_handle().spawn(
-            "da-worker-prove",
+            "da-worker",
             Some(MADARA_TASK_GROUP),
-            DataAvailabilityWorkerProving::prove_current_block(
-                da_client.get_mode(),
-                commitment_state_diff_rx,
-                madara_backend.clone(),
-            ),
-        );
-
-        task_manager.spawn_essential_handle().spawn(
-            "da-worker-update",
-            Some(MADARA_TASK_GROUP),
-            DataAvailabilityWorker::<_, _, StarknetHasher>::update_state(
+            DataAvailabilityWorker::<_, StarknetHasher>::prove_current_block(
                 da_client,
-                client.clone(),
+                prometheus_registry.clone(),
+                commitment_state_diff_rx,
                 madara_backend.clone(),
             ),
         );
@@ -546,7 +539,12 @@ pub fn new_full(
         task_manager.spawn_essential_handle().spawn(
             "settlement-worker-sync-state",
             Some("madara"),
-            SettlementWorker::<_, StarknetHasher, _>::sync_state(client.clone(), settlement_provider, retry_strategy),
+            SettlementWorker::<_, StarknetHasher, _>::sync_state(
+                client.clone(),
+                settlement_provider,
+                madara_backend.clone(),
+                retry_strategy,
+            ),
         );
     }
 

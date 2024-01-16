@@ -1,5 +1,7 @@
 pub mod config;
 
+use std::collections::HashMap;
+
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use ethers::types::{I256, U256};
@@ -25,24 +27,8 @@ pub struct StarknetClient {
 
 #[async_trait]
 impl DaClient for StarknetClient {
-    async fn publish_state_diff(&self, state_diff: Vec<U256>) -> Result<()> {
-        let calldata: Result<Vec<FieldElement>, _> =
-            state_diff.iter().map(|d| Felt252Wrapper::try_from(*d).map(|fw| fw.0)).collect();
-
-        let calldata = calldata?;
-
-        let _ = self
-            .sequencer_account
-            .execute(vec![Call {
-                to: self.da_contract,
-                selector: get_selector_from_name("updateState").map_err(|e| anyhow!("get selector failed, {e}"))?,
-                calldata,
-            }])
-            .send()
-            .await
-            .map_err(|e| anyhow!("send transaction failed {e}"))?;
-
-        Ok(())
+    fn get_mode(&self) -> DaMode {
+        self.mode
     }
 
     async fn last_published_state(&self) -> Result<I256> {
@@ -63,8 +49,28 @@ impl DaClient for StarknetClient {
             .ok_or(anyhow!("invalid call contract result"))
     }
 
-    fn get_mode(&self) -> DaMode {
-        self.mode
+    async fn publish_state_diff(&self, state_diff: Vec<U256>) -> Result<()> {
+        let calldata: Result<Vec<FieldElement>, _> =
+            state_diff.iter().map(|d| Felt252Wrapper::try_from(*d).map(|fw| fw.0)).collect();
+
+        let calldata = calldata?;
+
+        let _ = self
+            .sequencer_account
+            .execute(vec![Call {
+                to: self.da_contract,
+                selector: get_selector_from_name("updateState").map_err(|e| anyhow!("get selector failed, {e}"))?,
+                calldata,
+            }])
+            .send()
+            .await
+            .map_err(|e| anyhow!("send transaction failed {e}"))?;
+
+        Ok(())
+    }
+
+    fn get_da_metric_labels(&self) -> HashMap<String, String> {
+        [("name".into(), "starknet".into())].iter().cloned().collect()
     }
 }
 

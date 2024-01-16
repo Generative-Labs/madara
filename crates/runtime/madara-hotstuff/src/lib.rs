@@ -18,6 +18,7 @@ mod runtime_tests;
 mod types;
 
 use blockifier::execution::contract_class::ContractClass;
+use blockifier::transaction::objects::TransactionExecutionInfo;
 pub use config::*;
 pub use frame_support::traits::{ConstU128, ConstU32, ConstU64, ConstU8, KeyOwnerProofSystem, Randomness, StorageInfo};
 pub use frame_support::weights::constants::{
@@ -29,7 +30,7 @@ pub use frame_system::Call as SystemCall;
 use frame_system::{EventRecord, Phase};
 use hotstuff_primitives::AuthorityId as HotstuffId;
 use mp_felt::Felt252Wrapper;
-use mp_simulations::{SimulatedTransaction, SimulationFlags};
+use mp_simulations::{PlaceHolderErrorTypeForFailedStarknetExecution, SimulationFlags};
 use mp_transactions::compute_hash::ComputeTransactionHash;
 use mp_transactions::{HandleL1MessageTransaction, Transaction, UserTransaction};
 // Hotstuff consensus authority id.
@@ -259,7 +260,7 @@ impl_runtime_apis! {
             Starknet::estimate_fee(transactions)
         }
 
-        fn simulate_transactions(transactions: Vec<UserTransaction>, simulation_flags: SimulationFlags) -> Result<Vec<SimulatedTransaction>, DispatchError> {
+        fn simulate_transactions(transactions: Vec<UserTransaction>, simulation_flags: SimulationFlags) -> Result<Vec<Result<TransactionExecutionInfo, PlaceHolderErrorTypeForFailedStarknetExecution>>, DispatchError> {
             Starknet::simulate_transactions(transactions, simulation_flags)
         }
 

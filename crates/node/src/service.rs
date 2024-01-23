@@ -18,6 +18,8 @@ use mc_data_availability::avail::{config::AvailConfig, AvailClient};
 use mc_data_availability::celestia::{config::CelestiaConfig, CelestiaClient};
 use mc_data_availability::ethereum::config::EthereumConfig;
 use mc_data_availability::ethereum::EthereumClient;
+use mc_data_availability::starknet::config::StarknetConfig;
+use mc_data_availability::starknet::StarknetClient;
 use mc_data_availability::{DaClient, DaLayer, DataAvailabilityWorker};
 use mc_genesis_data_provider::OnDiskGenesisConfig;
 use mc_l1_messages::config::L1MessagesWorkerConfig;
@@ -449,6 +451,10 @@ pub fn new_full(
             DaLayer::Avail => {
                 let avail_conf = AvailConfig::try_from(&da_path)?;
                 Arc::new(AvailClient::try_from(avail_conf).map_err(|e| ServiceError::Other(e.to_string()))?)
+            }
+            DaLayer::Starknet => {
+                let starknet_conf = StarknetConfig::try_from(&da_path)?;
+                Arc::new(StarknetClient::try_from(starknet_conf).map_err(|e| ServiceError::Other(e.to_string()))?)
             }
         };
 
